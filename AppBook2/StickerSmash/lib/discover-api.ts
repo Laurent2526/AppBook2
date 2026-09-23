@@ -1,3 +1,5 @@
+import { request } from "@/lib/api-client";
+
 export type DiscoverBook = {
   id: string;
   title: string;
@@ -27,45 +29,49 @@ export type DiscoverResponse = {
   saved: DiscoverBook[];
 };
 
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
+type BackendBook = {
+  id: number | string;
+  title: string;
+  description?: string | null;
+  author_name?: string | null;
+  cover_url?: string | null;
+  writing_status?: string;
+};
 
-async function request<T>(path: string, userId?: string): Promise<T> {
-  if (!apiBaseUrl) {
-    throw new Error("Chưa cấu hình EXPO_PUBLIC_API_URL cho ứng dụng.");
-  }
-
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: {
-      Accept: "application/json",
-      ...(userId ? { "X-User-Id": userId } : {}),
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Máy chủ trả về lỗi ${response.status}.`);
-  }
-
-  return response.json() as Promise<T>;
-}
+const mapBook = (book: BackendBook): DiscoverBook => ({
+  id: String(book.id),
+  title: book.title,
+  description: book.description || undefined,
+  author: book.author_name || undefined,
+  status: book.writing_status,
+  coverUrl: book.cover_url || undefined,
+});
 
 export function getGenres() {
-  return request<{ genres: DiscoverGenre[] }>("/discover/genres");
+  return request<{ categories: DiscoverGenre[] }>("/categories").then(
+    (data) => ({
+      genres: data.categories.map((category) => ({
+        ...category,
+        id: String(category.id),
+      })),
+    }),
+  );
 }
 
-export function getRecommendations(userId?: string, genreIds: string[] = []) {
+export function getRecommendations(_userId?: string, genreIds: string[] = []) {
   const params = new URLSearchParams();
-  if (genreIds.length > 0) params.set("genres", genreIds.join(","));
-  const query = params.toString();
-
-  return request<Pick<DiscoverResponse, "recommendations">>(
-    `/discover/recommendations${query ? `?${query}` : ""}`,
-    userId,
+  if (genreIds.length > 0) params.set("categoryId", genreIds[0]);
+  params.set("limit", "20");
+  return request<{ rows: BackendBook[] }>(`/books?${params.toString()}`).then(
+    (data) => ({
+      recommendations: data.rows.map(mapBook),
+    }),
   );
 }
 
-export function getFollowingFeed(userId: string) {
-  return request<Omit<DiscoverResponse, "recommendations">>(
-    "/discover/following",
-    userId,
-  );
+export function getFollowingFeed(_userId: string) {
+  return request<{ rows: BackendBook[] }>("/books?limit=20").then((data) => ({
+    following: [],
+    saved: data.rows.map(mapBook),
+  }));
 }

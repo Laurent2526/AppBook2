@@ -1,32 +1,50 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 import { useAuth } from "@/components/auth-provider";
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { login, register, isAuthenticated } = useAuth();
+  const { login, register, verifyOtp, isAuthenticated } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpTarget, setOtpTarget] = useState<string | null>(null);
+  const [otp, setOtp] = useState("");
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     try {
+      if (otpTarget) {
+        await verifyOtp(otpTarget, otp);
+        Alert.alert("Xác thực thành công", "Tài khoản đã sẵn sàng.", [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+        return;
+      }
       if (mode === "login") {
-        login(email, password);
+        await login(email, password);
       } else {
-        register({ name, email, password });
+        const result = await register({ name, username, email, password });
+        setOtpTarget(result.target);
+        Alert.alert(
+          "Xác thực email",
+          result.debugOtp
+            ? `Mã OTP dùng cho môi trường phát triển: ${result.debugOtp}`
+            : "Nhập mã OTP đã được gửi tới email của bạn.",
+        );
+        return;
       }
 
       Alert.alert(
@@ -77,60 +95,96 @@ export default function AuthScreen() {
         </View>
 
         <View style={styles.formBox}>
-          {mode === "register" && (
+          {otpTarget ? (
             <View style={styles.fieldWrap}>
-              <Text style={styles.label}>Họ và tên</Text>
+              <Text style={styles.label}>Mã OTP</Text>
               <TextInput
-                value={name}
-                onChangeText={setName}
+                value={otp}
+                onChangeText={setOtp}
+                keyboardType="number-pad"
+                maxLength={6}
                 style={styles.input}
-                placeholder="Nhập họ tên"
+                placeholder="Nhập 6 chữ số"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          ) : mode === "register" ? (
+            <>
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Tên đăng nhập</Text>
+                <TextInput
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  style={styles.input}
+                  placeholder="ten_dang_nhap"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Họ và tên</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  style={styles.input}
+                  placeholder="Nhập họ tên"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+            </>
+          ) : null}
+
+          {!otpTarget && (
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={styles.input}
+                placeholder="example@gmail.com"
                 placeholderTextColor="#9CA3AF"
               />
             </View>
           )}
 
-          <View style={styles.fieldWrap}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              style={styles.input}
-              placeholder="example@gmail.com"
-              placeholderTextColor="#9CA3AF"
-            />
-          </View>
-
-          <View style={styles.fieldWrap}>
-            <Text style={styles.label}>Mật khẩu</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              style={styles.input}
-              placeholder="Nhập mật khẩu"
-              placeholderTextColor="#9CA3AF"
-            />
-          </View>
+          {!otpTarget && (
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>Mật khẩu</Text>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                style={styles.input}
+                placeholder="Nhập mật khẩu"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          )}
 
           <Pressable style={styles.primaryButton} onPress={handleSubmit}>
             <Text style={styles.primaryButtonText}>
-              {mode === "login" ? "Đăng nhập" : "Tạo tài khoản"}
+              {otpTarget
+                ? "Xác thực OTP"
+                : mode === "login"
+                  ? "Đăng nhập"
+                  : "Tạo tài khoản"}
             </Text>
           </Pressable>
 
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => setMode(mode === "login" ? "register" : "login")}
-          >
-            <Text style={styles.secondaryButtonText}>
-              {mode === "login"
-                ? "Chưa có tài khoản? Đăng ký ngay"
-                : "Đã có tài khoản? Đăng nhập"}
-            </Text>
-          </Pressable>
+          {!otpTarget && (
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => setMode(mode === "login" ? "register" : "login")}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {mode === "login"
+                  ? "Chưa có tài khoản? Đăng ký ngay"
+                  : "Đã có tài khoản? Đăng nhập"}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

@@ -1,10 +1,11 @@
 import React, {
-    createContext,
-    useCallback,
-    useContext,
-    useMemo,
-    useState,
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
 } from "react";
+import { authApi, clearAuthTokens, setAuthTokens } from "@/lib/api-client";
 
 export type AuthUser = {
   id: string;
@@ -23,12 +24,14 @@ export type ReadingHistoryItem = {
 type AuthContextValue = {
   user: AuthUser | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => void;
+  login: (identifier: string, password: string) => Promise<void>;
   register: (payload: {
     name: string;
     email: string;
     password: string;
-  }) => void;
+    username: string;
+  }) => Promise<{ target: string; debugOtp?: string }>;
+  verifyOtp: (target: string, code: string) => Promise<void>;
   logout: () => void;
   readingHistory: ReadingHistoryItem[];
   recordReading: (item: Omit<ReadingHistoryItem, "time">) => void;
@@ -41,40 +44,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryItem[]>(
     [],
   );
+  const [pendingRegistration, setPendingRegistration] = useState<{
+    identifier: string;
+    password: string;
+  } | null>(null);
 
-  const login = (email: string, password: string) => {
-    if (!email.trim() || !password.trim()) {
+  const accountToUser = (account: Record<string, unknown>): AuthUser => ({
+    id: String(account.id),
+    name: String(account.full_name || account.username || "Người dùng"),
+    email: String(account.email || ""),
+  });
+
+  const login = useCallback(async (identifier: string, password: string) => {
+    if (!identifier.trim() || !password.trim()) {
       throw new Error("Vui lòng nhập email và mật khẩu.");
     }
-
-    setUser({
-      id: "demo-user",
-      name: "Người dùng",
-      email: email.trim(),
+    const result = await authApi.login({
+      identifier: identifier.trim(),
+      password,
+      platform: "other",
     });
-  };
+    setAuthTokens(result);
+    setUser(accountToUser(result.account));
+  }, []);
 
-  const register = ({
-    name,
-    email,
-    password,
-  }: {
-    name: string;
-    email: string;
-    password: string;
-  }) => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      throw new Error("Vui lòng điền đầy đủ thông tin.");
-    }
+  const register = useCallback(
+    async ({
+      name,
+      email,
+      password,
+      username,
+    }: {
+      name: string;
+      email: string;
+      password: string;
+      username: string;
+    }): Promise<{ target: string; debugOtp?: string }> => {
+      if (
+        !name.trim() ||
+        !email.trim() ||
+        !password.trim() ||
+        !username.trim()
+      ) {
+        throw new Error("Vui lòng điền đầy đủ thông tin.");
+      }
+      const result = await authApi.register({
+        username: username.trim(),
+        fullName: name.trim(),
+        email: email.trim(),
+        password,
+        channel: "email",
+      });
+      setPendingRegistration({ identifier: email.trim(), password });
+      return result;
+    },
+    [],
+  );
 
-    setUser({
-      id: "demo-user",
-      name: name.trim(),
-      email: email.trim(),
-    });
-  };
+  const verifyOtp = useCallback(
+    async (target: string, code: string) => {
+      const result = await authApi.verifyOtp({ target, code });
+      if (pendingRegistration) {
+        const loginResult = await authApi.login({
+          identifier: pendingRegistration.identifier,
+          password: pendingRegistration.password,
+          platform: "other",
+        });
+        setAuthTokens(loginResult);
+        setUser(accountToUser(loginResult.account));
+        setPendingRegistration(null);
+      } else {
+        setUser(accountToUser(result.account));
+      }
+    },
+    [pendingRegistration],
+  );
 
-  const logout = () => setUser(null);
+  const logout = useCallback(() => {
+    clearAuthTokens();
+    setUser(null);
+  }, []);
 
   const recordReading = useCallback(
     (item: Omit<ReadingHistoryItem, "time">) => {
@@ -92,11 +141,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: !!user,
       login,
       register,
+      verifyOtp,
       logout,
       readingHistory,
       recordReading,
     }),
-    [user, readingHistory, recordReading],
+    [user, readingHistory, recordReading, login, register, verifyOtp, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
