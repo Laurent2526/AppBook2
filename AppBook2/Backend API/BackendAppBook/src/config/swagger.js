@@ -185,16 +185,52 @@ const swaggerOptions = {
         "get",
         "Moderation",
       ),
-      "/api/admin/moderation/{id}/approve": protectedOperation(
-        "Approve moderation request",
-        "post",
-        "Moderation",
-      ),
-      "/api/admin/moderation/{id}/reject": protectedOperation(
-        "Reject moderation request",
-        "post",
-        "Moderation",
-      ),
+      "/api/admin/moderation/{id}/approve": {
+        ...protectedOperation(
+          "Approve moderation request",
+          "post",
+          "Moderation",
+        ),
+        post: {
+          ...protectedOperation(
+            "Approve moderation request",
+            "post",
+            "Moderation",
+          ).post,
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              description: "Moderation request ID from the queue",
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+        },
+      },
+      "/api/admin/moderation/{id}/reject": {
+        ...protectedOperation(
+          "Reject moderation request",
+          "post",
+          "Moderation",
+        ),
+        post: {
+          ...protectedOperation(
+            "Reject moderation request",
+            "post",
+            "Moderation",
+          ).post,
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              description: "Moderation request ID from the queue",
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+        },
+      },
       "/api/me/bank-accounts": {
         ...protectedOperation("List bank accounts", "get", "Bank and KYC"),
         ...protectedOperation("Create bank account", "post", "Bank and KYC"),

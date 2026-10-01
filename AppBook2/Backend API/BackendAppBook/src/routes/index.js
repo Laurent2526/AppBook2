@@ -41,6 +41,21 @@ router.get("/me", authenticate, (req, res) => {
   res.json({ success: true, data: { account: req.account } });
 });
 
+router.get("/me/books", authenticate, async (req, res, next) => {
+  try {
+    const { listMyBooksSchema } = require("../modules/book/book.schema");
+    const bookService = require("../modules/book/book.service");
+
+    const data = await bookService.listMine(
+      req.auth.sub,
+      listMyBooksSchema.parse(req.query),
+    );
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/health", async (req, res, next) => {
   try {
     await db.raw("SELECT 1 AS ok");

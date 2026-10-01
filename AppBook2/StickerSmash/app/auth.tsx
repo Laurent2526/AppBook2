@@ -23,8 +23,11 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [otpTarget, setOtpTarget] = useState<string | null>(null);
   const [otp, setOtp] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       if (otpTarget) {
         await verifyOtp(otpTarget, otp);
@@ -56,6 +59,8 @@ export default function AuthScreen() {
       const message =
         error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       Alert.alert("Thông báo", message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -163,13 +168,19 @@ export default function AuthScreen() {
             </View>
           )}
 
-          <Pressable style={styles.primaryButton} onPress={handleSubmit}>
+          <Pressable
+            style={[styles.primaryButton, submitting && styles.disabledButton]}
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
             <Text style={styles.primaryButtonText}>
-              {otpTarget
-                ? "Xác thực OTP"
-                : mode === "login"
-                  ? "Đăng nhập"
-                  : "Tạo tài khoản"}
+              {submitting
+                ? "Đang xử lý..."
+                : otpTarget
+                  ? "Xác thực OTP"
+                  : mode === "login"
+                    ? "Đăng nhập"
+                    : "Tạo tài khoản"}
             </Text>
           </Pressable>
 
@@ -269,6 +280,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+  disabledButton: { opacity: 0.6 },
   secondaryButton: {
     marginTop: 14,
     paddingVertical: 12,

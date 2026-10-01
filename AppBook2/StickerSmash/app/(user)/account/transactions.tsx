@@ -1,39 +1,42 @@
+import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const transactions = [
-  {
-    label: "Nạp tiền vào ví",
-    amount: "+100.000 đ",
-    date: "Hôm nay",
-    positive: true,
-  },
-  {
-    label: "Mua chương 10",
-    amount: "-500 đ",
-    date: "Hôm qua",
-    positive: false,
-  },
-];
+import { BackHeader } from "@/components/back-header";
+import { getWalletEntries } from "@/lib/account-api";
 
 export default function TransactionsScreen() {
+  const [transactions, setTransactions] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    getWalletEntries()
+      .then((data) => setTransactions(data.rows))
+      .catch((error) => console.warn("transactions fetch failed", error));
+  }, []);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Lịch sử giao dịch</Text>
+        <BackHeader title="Lịch sử giao dịch" />
+        {transactions.length === 0 && (
+          <Text style={styles.empty}>Chưa có giao dịch.</Text>
+        )}
         {transactions.map((transaction) => (
-          <View
-            key={`${transaction.label}-${transaction.date}`}
-            style={styles.row}
-          >
+          <View key={transaction.id} style={styles.row}>
             <View>
-              <Text style={styles.label}>{transaction.label}</Text>
-              <Text style={styles.date}>{transaction.date}</Text>
+              <Text style={styles.label}>
+                {transaction.reason || transaction.note || "Biến động số dư"}
+              </Text>
+              <Text style={styles.date}>{transaction.created_at || ""}</Text>
             </View>
             <Text
-              style={[styles.amount, transaction.positive && styles.positive]}
+              style={[
+                styles.amount,
+                transaction.direction === "credit" && styles.positive,
+              ]}
             >
-              {transaction.amount}
+              {transaction.direction === "credit" ? "+" : "-"}
+              {Number(transaction.amount).toLocaleString("vi-VN")} đ
             </Text>
           </View>
         ))}
@@ -58,4 +61,5 @@ const styles = StyleSheet.create({
   date: { color: "#6B7280", fontSize: 12, marginTop: 4 },
   amount: { color: "#DC2626", fontSize: 14, fontWeight: "700" },
   positive: { color: "#0F766E" },
+  empty: { color: "#6B7280", textAlign: "center", padding: 28 },
 });

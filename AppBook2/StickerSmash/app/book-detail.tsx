@@ -10,18 +10,57 @@ import {
 } from "react-native";
 
 import { useAuth } from "@/components/auth-provider";
+import { getBookById, getBookChapters } from "@/lib/discover-api";
 
 export default function BookDetailScreen() {
   const router = useRouter();
   const { isAuthenticated, recordReading } = useAuth();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const title = id ?? "Chi tiết truyện";
-  const isPaidContent = true;
+  const [book, setBook] = React.useState<any>(null);
+  const [chapters, setChapters] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    if (id) {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    const load = async () => {
+      try {
+        const [{ book: fetchedBook }, { chapters: fetchedChapters }] =
+          await Promise.all([
+            getBookById(String(id)),
+            getBookChapters(String(id)),
+          ]);
+
+        if (!active) return;
+        setBook(fetchedBook);
+        setChapters(fetchedChapters || []);
+      } catch (error) {
+        console.warn("book detail fetch failed", error);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  const title = book?.title || "Chi tiết truyện";
+  const isPaidContent = chapters.some(
+    (chapter) => Number(chapter.is_free) === 0,
+  );
+
+  React.useEffect(() => {
+    if (id && title) {
       recordReading({
-        id: `${title}-detail`,
+        id: `${id}-detail`,
         title,
         chapter: "Đã mở truyện",
         color: "#F59E0B",
@@ -30,10 +69,19 @@ export default function BookDetailScreen() {
   }, [id, recordReading, title]);
 
   const handleReadPress = () => {
+    if (!id) return;
+
+    const firstChapter =
+      chapters.find((chapter) => Number(chapter.is_free) === 1) || chapters[0];
+    const chapterId = firstChapter?.id ? String(firstChapter.id) : "1";
+    const chapterNumber = firstChapter?.chapter_number
+      ? String(firstChapter.chapter_number)
+      : "1";
+
     recordReading({
-      id: `${title}-book`,
+      id: `${id}-book`,
       title,
-      chapter: "Chưa chọn chương",
+      chapter: `Chương ${chapterNumber}`,
       color: "#F59E0B",
     });
 
@@ -49,7 +97,10 @@ export default function BookDetailScreen() {
       return;
     }
 
-    router.push({ pathname: "/reader", params: { bookId: id, chapter: "1" } });
+    router.push({
+      pathname: "/reader",
+      params: { bookId: id, chapterId, chapter: chapterNumber },
+    });
   };
 
   return (
@@ -64,7 +115,11 @@ export default function BookDetailScreen() {
           </Text>
         </View>
         <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>Thông tin và các chương của truyện</Text>
+        <Text style={styles.subtitle}>{book?.author || "Tác giả"}</Text>
+        <Text style={styles.description}>
+          {book?.description ||
+            "Thông tin và các chương của truyện đang được tải từ máy chủ."}
+        </Text>
         <View style={styles.metaCard}>
           <Text style={styles.metaTitle}>Trạng thái truyện</Text>
           <Text style={styles.metaValue}>
@@ -75,9 +130,12 @@ export default function BookDetailScreen() {
               ? "Chỉ tài khoản đã đăng nhập mới được đọc nội dung trả phí."
               : "Truyện này có thể đọc miễn phí mà không cần đăng nhập."}
           </Text>
+          <Text style={styles.metaHint}>Số chương: {chapters.length || 0}</Text>
         </View>
         <Pressable style={styles.primaryButton} onPress={handleReadPress}>
-          <Text style={styles.primaryButtonText}>Đọc truyện</Text>
+          <Text style={styles.primaryButtonText}>
+            {loading ? "Đang tải..." : "Đọc truyện"}
+          </Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -128,6 +186,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 6,
+  },
+  description: {
+    color: "#4B5563",
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 12,
   },
   metaHint: { color: "#4B5563", fontSize: 13, lineHeight: 20 },
   primaryButton: {

@@ -1,79 +1,146 @@
 import { useAuth } from "@/components/auth-provider";
+import { BackHeader } from "@/components/back-header";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import {
+  getBookmarks,
+  getPurchases,
+  getReadingHistory,
+} from "@/lib/account-api";
+import { getBookById } from "@/lib/discover-api";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    FlatList,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const tabs = ["Lịch sử", "Tủ truyện", "Mua combo", "Đánh giá"];
-const saved = [
-  {
-    id: "saved-1",
-    title: "Dế Mèn Phiêu Lưu Ký",
-    chapter: "Chương 12",
-    color: "#F59E0B",
-  },
-  {
-    id: "saved-2",
-    title: "Cổng Trời Huyền Bí",
-    chapter: "Chương 8",
-    color: "#A78BFA",
-  },
-];
-const purchases = [
-  {
-    id: "combo-1",
-    title: "Combo Truyện phiêu lưu",
-    chapter: "12 chương VIP",
-    color: "#60A5FA",
-  },
-  {
-    id: "combo-2",
-    title: "Combo Khoa học thiếu nhi",
-    chapter: "8 chương VIP",
-    color: "#34D399",
-  },
-];
-const reviews = [
-  {
-    id: "review-1",
-    title: "Dế Mèn Phiêu Lưu Ký",
-    chapter: "Đã đánh giá 5 sao",
-    color: "#FBBF24",
-  },
-  {
-    id: "review-2",
-    title: "Khoa Học Cho Thiếu Nhi",
-    chapter: "Đã đánh giá 4 sao",
-    color: "#38BDF8",
-  },
-];
+
+type LibraryItem = {
+  id: string;
+  title: string;
+  chapter: string;
+  bookId: string;
+  chapterId?: string;
+  color: string;
+  time?: string;
+};
+
+const colors = ["#F59E0B", "#A78BFA", "#60A5FA", "#34D399", "#F97316"];
 
 export default function LibraryScreen() {
   const router = useRouter();
-  const { readingHistory } = useAuth();
+  const { isAuthenticated, readingHistory } = useAuth();
   const [activeTab, setActiveTab] = React.useState("Lịch sử");
-  const data =
-    activeTab === "Lịch sử"
-      ? readingHistory
-      : activeTab === "Tủ truyện"
-        ? saved
-        : activeTab === "Mua combo"
-          ? purchases
-          : reviews;
+  const [items, setItems] = React.useState<Record<string, LibraryItem[]>>({
+    "Lịch sử": [],
+    "Tủ truyện": [],
+    "Mua combo": [],
+    "Đánh giá": [],
+  });
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [historyResult, bookmarkResult, purchaseResult] =
+          await Promise.all([
+            getReadingHistory(),
+            getBookmarks(),
+            getPurchases(),
+          ]);
+        const bookIds = [
+          ...historyResult.items.map((item) => item.book_id),
+          ...bookmarkResult.items.map((item) => item.book_id),
+          ...purchaseResult.rows.map((item) => item.book_id),
+        ];
+        const uniqueBookIds = [...new Set(bookIds)];
+        const books = await Promise.all(
+          uniqueBookIds.map(async (bookId) => {
+            try {
+              const result = await getBookById(bookId);
+              return [bookId, result.book.title] as const;
+            } catch {
+              return [bookId, "Truyện không còn khả dụng"] as const;
+            }
+          }),
+        );
+        const titles = Object.fromEntries(books);
+
+        if (!active) return;
+        setItems({
+          "Lịch sử": historyResult.items.map((item, index) => ({
+            id: item.id,
+            title: titles[item.book_id] || "Truyện",
+            chapter: item.last_chapter_id
+              ? `Chương đã đọc (${item.chapters_read || 0})`
+              : "Chưa có chương đọc",
+            bookId: item.book_id,
+            chapterId: item.last_chapter_id || undefined,
+            color: colors[index % colors.length],
+            time: item.last_read_at,
+          })),
+          "Tủ truyện": bookmarkResult.items.map((item, index) => ({
+            id: item.id,
+            title: titles[item.book_id] || "Truyện",
+            chapter: "Đã lưu",
+            bookId: item.book_id,
+            color: colors[index % colors.length],
+          })),
+          "Mua combo": purchaseResult.rows.map((item, index) => ({
+            id: item.id,
+            title: item.book_title || titles[item.book_id] || "Truyện",
+            chapter:
+              item.chapter_title || `Chương ${item.chapter_number || ""}`,
+            bookId: item.book_id,
+            chapterId: item.chapter_id,
+            color: colors[index % colors.length],
+          })),
+          "Đánh giá": [],
+        });
+      } catch (loadError) {
+        console.warn("library fetch failed", loadError);
+        if (active) setError("Không tải được dữ liệu thư viện.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
+
+  const data = items[activeTab] || [];
+
+  const openItem = (item: LibraryItem) => {
+    router.push({
+      pathname: "/reader",
+      params: {
+        bookId: item.bookId,
+        chapterId: item.chapterId,
+      },
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <ThemedView style={styles.container}>
+        <BackHeader title="Thư viện" style={styles.backHeader} />
         <View style={styles.header}>
-          <ThemedText type="title">Thư viện</ThemedText>
           <ThemedText style={styles.caption}>Của bạn</ThemedText>
         </View>
         <ScrollView
@@ -102,23 +169,18 @@ export default function LibraryScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <Text style={styles.empty}>
-              Chưa có lịch sử đọc. Hãy mở một truyện hoặc chương để lưu lại tại
-              đây.
+              {loading
+                ? "Đang tải dữ liệu..."
+                : error ||
+                  (isAuthenticated
+                    ? activeTab === "Đánh giá"
+                      ? "Backend chưa có API danh sách đánh giá của bạn."
+                      : "Chưa có dữ liệu trong mục này."
+                    : "Đăng nhập để xem thư viện cá nhân.")}
             </Text>
           }
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.item}
-              onPress={() =>
-                router.push({
-                  pathname: "/reader",
-                  params: {
-                    bookId: item.title,
-                    chapter: item.chapter.replace("Chương ", ""),
-                  },
-                })
-              }
-            >
+          renderItem={({ item }: { item: LibraryItem }) => (
+            <Pressable style={styles.item} onPress={() => openItem(item)}>
               <View style={[styles.cover, { backgroundColor: item.color }]}>
                 <Text style={styles.coverText}>
                   {item.title.slice(0, 2).toUpperCase()}
@@ -127,7 +189,7 @@ export default function LibraryScreen() {
               <View style={styles.info}>
                 <ThemedText style={styles.title}>{item.title}</ThemedText>
                 <Text style={styles.meta}>{item.chapter}</Text>
-                {"time" in item && <Text style={styles.meta}>{item.time}</Text>}
+                {item.time && <Text style={styles.meta}>{item.time}</Text>}
               </View>
               <Text style={styles.arrow}>›</Text>
             </Pressable>
@@ -140,8 +202,12 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F5F7FA" },
   container: { flex: 1, backgroundColor: "#F5F7FA" },
+  backHeader: {
+    paddingHorizontal: 18,
+    marginTop: 8,
+  },
   header: {
-    paddingTop: 28,
+    paddingTop: 8,
     paddingHorizontal: 18,
     flexDirection: "row",
     justifyContent: "space-between",

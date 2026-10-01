@@ -1,54 +1,110 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
-    Alert,
-    Pressable,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import { useAuth } from "@/components/auth-provider";
-
-const premiumContent = {
-  title: "Chương VIP",
-  body: "Nội dung chương VIP chỉ hiển thị sau khi người dùng đã đăng nhập và xác thực tài khoản. Đây là nền tảng để nối với API backend cho các chương trả phí.",
-};
-
-const freeContent = {
-  title: "Chương miễn phí",
-  body: "Nội dung chương miễn phí có thể xem mà không cần đăng nhập. Đây là phần phù hợp với mô hình đọc mở, chỉ có các chương trả phí hoặc nội dung nâng cao yêu cầu tài khoản.",
-};
+import { createBookmark, updateReadingHistory } from "@/lib/account-api";
+import {
+  getBookById,
+  getBookChapters,
+  getChapterById,
+} from "@/lib/discover-api";
 
 export default function ReaderScreen() {
   const router = useRouter();
   const { isAuthenticated, recordReading } = useAuth();
-  const { bookId, chapter } = useLocalSearchParams<{
+  const { bookId, chapter, chapterId } = useLocalSearchParams<{
     bookId?: string;
     chapter?: string;
+    chapterId?: string;
   }>();
-  const isPremiumChapter = chapter === "65" || chapter === "vip";
+  const [book, setBook] = React.useState<any>(null);
+  const [chapterData, setChapterData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    if (bookId) {
+    let active = true;
+
+    const load = async () => {
+      try {
+        if (chapterId) {
+          const { chapter: fetchedChapter } = await getChapterById(
+            String(chapterId),
+          );
+          if (!active) return;
+          setChapterData(fetchedChapter);
+          if (fetchedChapter?.book_id) {
+            const { book: fetchedBook } = await getBookById(
+              String(fetchedChapter.book_id),
+            );
+            if (active) setBook(fetchedBook);
+          }
+          return;
+        }
+
+        if (!bookId) return;
+        const { chapters } = await getBookChapters(String(bookId));
+        const selected =
+          chapters.find(
+            (item: any) =>
+              String(item.chapter_number) === String(chapter ?? "1"),
+          ) || chapters[0];
+        if (!active) return;
+        if (selected) {
+          setChapterData(selected);
+          const { book: fetchedBook } = await getBookById(String(bookId));
+          if (active) setBook(fetchedBook);
+        }
+      } catch (error) {
+        console.warn("reader fetch failed", error);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [bookId, chapter, chapterId]);
+
+  React.useEffect(() => {
+    if (bookId && chapter) {
       recordReading({
-        id: `${bookId}-${chapter ?? "1"}`,
-        title: bookId,
-        chapter: `Chương ${chapter ?? "1"}`,
+        id: `${bookId}-${chapter}`,
+        title: book?.title || bookId,
+        chapter: `Chương ${chapter}`,
         color: "#F59E0B",
       });
+
+      if (isAuthenticated) {
+        updateReadingHistory(String(bookId), {
+          lastChapterId: chapterId,
+          chaptersRead: Number(chapter),
+          progressPercent: "0.00",
+        }).catch((error) =>
+          console.warn("reading history update failed", error),
+        );
+      }
     }
-  }, [bookId, chapter, recordReading]);
+  }, [bookId, chapter, chapterId, book, isAuthenticated, recordReading]);
 
-  const content =
-    isPremiumChapter && !isAuthenticated
-      ? null
-      : isPremiumChapter
-        ? premiumContent
-        : freeContent;
+  const requiresPurchase = Boolean(
+    chapterData && Number(chapterData.is_free) === 0 && !chapterData.content,
+  );
 
-  if (isPremiumChapter && !isAuthenticated) {
+  const contentTitle = chapterData?.title || "Chương";
+  const contentBody =
+    chapterData?.content || "Nội dung chương đang được tải từ máy chủ.";
+
+  if (requiresPurchase && !isAuthenticated) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
@@ -56,7 +112,7 @@ export default function ReaderScreen() {
             <Pressable onPress={() => router.back()}>
               <Text style={styles.back}>‹</Text>
             </Pressable>
-            <Text style={styles.chapter}>Chương VIP</Text>
+            <Text style={styles.chapter}>Chương trả phí</Text>
             <View style={styles.spacer} />
           </View>
 
@@ -85,12 +141,18 @@ export default function ReaderScreen() {
           <Pressable onPress={() => router.back()}>
             <Text style={styles.back}>‹</Text>
           </Pressable>
-          <Text style={styles.chapter}>Chương {chapter ?? "1"}</Text>
+          <Text style={styles.chapter}>
+            Chương {chapter ?? chapterData?.chapter_number ?? "1"}
+          </Text>
           <View style={styles.spacer} />
         </View>
-        <Text style={styles.title}>{bookId ?? "Đang đọc truyện"}</Text>
-        <Text style={styles.subtitle}>{content?.title ?? "Nội dung"}</Text>
-        <Text style={styles.body}>{content?.body ?? freeContent.body}</Text>
+        <Text style={styles.title}>
+          {book?.title || bookId || "Đang đọc truyện"}
+        </Text>
+        <Text style={styles.subtitle}>{contentTitle}</Text>
+        <Text style={styles.body}>
+          {loading ? "Đang tải nội dung..." : contentBody}
+        </Text>
 
         <Pressable
           style={styles.secondaryButton}
@@ -102,10 +164,21 @@ export default function ReaderScreen() {
               );
               return;
             }
-            Alert.alert(
-              "Thành công",
-              "Bạn đã lưu truyện và có thể tiếp tục tương tác với nội dung.",
-            );
+            createBookmark(String(bookId))
+              .then(() =>
+                Alert.alert(
+                  "Đã lưu",
+                  "Truyện đã được lưu vào tủ truyện của bạn.",
+                ),
+              )
+              .catch((error) =>
+                Alert.alert(
+                  "Không thể lưu truyện",
+                  error instanceof Error
+                    ? error.message
+                    : "Máy chủ đang gặp sự cố.",
+                ),
+              );
           }}
         >
           <Text style={styles.secondaryButtonText}>Lưu truyện</Text>

@@ -1,9 +1,11 @@
+import React from "react";
 import { useRouter } from "expo-router";
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { useAuth } from "@/components/auth-provider";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { getBookmarks, getReadingHistory } from "@/lib/account-api";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const menuItems = [
@@ -66,6 +68,39 @@ const menuItems = [
 export default function ProfileScreen() {
   const router = useRouter();
   const { isAuthenticated, logout, user } = useAuth();
+  const [profileStats, setProfileStats] = React.useState({
+    booksRead: 0,
+    savedBooks: 0,
+    readingMinutes: 0,
+  });
+
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      setProfileStats({ booksRead: 0, savedBooks: 0, readingMinutes: 0 });
+      return;
+    }
+
+    let active = true;
+    Promise.all([getReadingHistory(), getBookmarks()])
+      .then(([history, bookmarks]) => {
+        if (!active) return;
+        setProfileStats({
+          booksRead: history.items.length,
+          savedBooks: bookmarks.items.length,
+          readingMinutes: Math.round(
+            history.items.reduce(
+              (total, item) => total + Number(item.total_read_time || 0),
+              0,
+            ) / 60,
+          ),
+        });
+      })
+      .catch((error) => console.warn("profile stats fetch failed", error));
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   const handleMenuPress = (item: (typeof menuItems)[number]) => {
     if (item.requiresAuth && !isAuthenticated) {
@@ -120,16 +155,22 @@ export default function ProfileScreen() {
 
           <View style={styles.statsContainer}>
             <View style={styles.statCard}>
-              <ThemedText style={styles.statValue}>12</ThemedText>
+              <ThemedText style={styles.statValue}>
+                {profileStats.booksRead}
+              </ThemedText>
               <ThemedText style={styles.statLabel}>cuốn đã đọc</ThemedText>
             </View>
             <View style={styles.statCard}>
-              <ThemedText style={styles.statValue}>45</ThemedText>
-              <ThemedText style={styles.statLabel}>phút/ngày</ThemedText>
+              <ThemedText style={styles.statValue}>
+                {profileStats.savedBooks}
+              </ThemedText>
+              <ThemedText style={styles.statLabel}>sách đã lưu</ThemedText>
             </View>
             <View style={styles.statCard}>
-              <ThemedText style={styles.statValue}>5 ngày</ThemedText>
-              <ThemedText style={styles.statLabel}>đọc liên tiếp 🔥</ThemedText>
+              <ThemedText style={styles.statValue}>
+                {profileStats.readingMinutes}
+              </ThemedText>
+              <ThemedText style={styles.statLabel}>phút đã đọc</ThemedText>
             </View>
           </View>
 

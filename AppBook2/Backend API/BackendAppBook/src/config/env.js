@@ -1,5 +1,15 @@
 const { z } = require("zod");
 
+const defaultCorsOrigins = [
+  "http://localhost:3001",
+  "http://127.0.0.1:3001",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "http://10.0.2.2:8081",
+  "exp://localhost:8081",
+  "exp://10.0.2.2:8081",
+].join(",");
+
 const schema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -22,7 +32,7 @@ const schema = z.object({
     .default("development-refresh-secret-change-me"),
   JWT_ACCESS_MINUTES: z.coerce.number().int().positive().default(15),
   JWT_REFRESH_DAYS: z.coerce.number().int().positive().default(30),
-  CORS_ORIGINS: z.string().default("http://localhost:3001"),
+  CORS_ORIGINS: z.string().default(defaultCorsOrigins),
   KYC_ENCRYPTION_KEY: z
     .string()
     .min(32)

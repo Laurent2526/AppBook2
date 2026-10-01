@@ -8,6 +8,10 @@ async function listPublic(input) {
   return repository.listPublic(input);
 }
 
+async function listMine(ownerId, input) {
+  return repository.listMine({ ownerId, ...input });
+}
+
 async function getPublic(id) {
   const book = await repository.findPublicById(id);
   if (!book)
@@ -39,7 +43,7 @@ async function createBook(ownerId, input) {
         title: input.title,
         slug,
         author_name: input.authorName || null,
-        cover_url: input.coverUrl || null,
+        cover_url: input.coverPath || null,
         description: input.description || null,
         status: "pending",
         writing_status: input.writingStatus,
@@ -140,7 +144,7 @@ async function updateBook(ownerId, bookId, input) {
       ...(input.authorName !== undefined
         ? { author_name: input.authorName }
         : {}),
-      ...(input.coverUrl !== undefined ? { cover_url: input.coverUrl } : {}),
+      ...(input.coverPath !== undefined ? { cover_url: input.coverPath } : {}),
       ...(input.description !== undefined
         ? { description: input.description }
         : {}),
@@ -329,6 +333,7 @@ async function getChapter(id, accountId) {
 
 module.exports = {
   listPublic,
+  listMine,
   getPublic,
   listChapters,
   createBook,

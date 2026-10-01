@@ -1,5 +1,6 @@
 const {
   listBooksSchema,
+  listMyBooksSchema,
   createBookSchema,
   createChapterSchema,
   updateBookSchema,
@@ -7,6 +8,27 @@ const {
   deleteRequestSchema,
 } = require("./book.schema");
 const service = require("./book.service");
+
+function normalizeMultipartBody(body) {
+  const value = { ...body };
+
+  if (typeof value.categoryIds === "string") {
+    value.categoryIds = JSON.parse(value.categoryIds);
+  }
+  for (const field of ["freePreviewChapters"]) {
+    if (value[field] !== undefined && value[field] !== "") {
+      value[field] = Number(value[field]);
+    }
+  }
+  for (const field of ["isMature"]) {
+    if (value[field] !== undefined) value[field] = value[field] === "true";
+  }
+  return value;
+}
+
+function getCoverPath(req) {
+  return req.file ? `/uploads/covers/${req.file.filename}` : undefined;
+}
 
 async function list(req, res, next) {
   try {
@@ -35,6 +57,18 @@ async function chapters(req, res, next) {
   }
 }
 
+async function listMine(req, res, next) {
+  try {
+    const data = await service.listMine(
+      req.auth.sub,
+      listMyBooksSchema.parse(req.query),
+    );
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getChapter(req, res, next) {
   try {
     const chapter = await service.getChapter(req.params.id, req.auth?.sub);
@@ -48,7 +82,10 @@ async function create(req, res, next) {
   try {
     const book = await service.createBook(
       req.auth.sub,
-      createBookSchema.parse(req.body),
+      createBookSchema.parse({
+        ...normalizeMultipartBody(req.body),
+        coverPath: getCoverPath(req),
+      }),
     );
     res.status(201).json({ success: true, data: { book } });
   } catch (error) {
@@ -74,7 +111,10 @@ async function update(req, res, next) {
     const result = await service.updateBook(
       req.auth.sub,
       req.params.id,
-      updateBookSchema.parse(req.body),
+      updateBookSchema.parse({
+        ...normalizeMultipartBody(req.body),
+        coverPath: getCoverPath(req),
+      }),
     );
     res.status(202).json({ success: true, data: result });
   } catch (error) {
@@ -111,6 +151,7 @@ async function requestDelete(req, res, next) {
 
 module.exports = {
   list,
+  listMine,
   get,
   chapters,
   getChapter,

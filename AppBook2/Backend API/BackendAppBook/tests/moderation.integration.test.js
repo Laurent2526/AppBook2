@@ -106,6 +106,18 @@ describe("Content moderation", () => {
 
     const bookId = bookResponse.body.data.book.id;
     bookIds.push(bookId);
+    const chapterResponse = await request(app)
+      .post(`/api/books/${bookId}/chapters`)
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({
+        chapterNumber: 1,
+        title: "Chương mở đầu",
+        content: "Nội dung chương mở đầu",
+        isFree: true,
+        price: "0.00",
+      });
+    expect(chapterResponse.status).toBe(201);
+
     const moderation = await db("moderation_requests")
       .where({ target_type: "book", target_id: bookId })
       .first();
@@ -127,6 +139,16 @@ describe("Content moderation", () => {
     expect(approved.body.data.status).toBe("published");
 
     const book = await db("books").where({ id: bookId }).first();
+    const chapter = await db("chapters")
+      .where({ id: chapterResponse.body.data.chapter.id })
+      .first();
+    const chapterRequest = await db("moderation_requests")
+      .where({
+        target_type: "chapter",
+        target_id: chapter.id,
+        request_type: "chapter_publish",
+      })
+      .first();
     const approvedRequest = await db("moderation_requests")
       .where({ id: moderation.id })
       .first();
@@ -137,6 +159,8 @@ describe("Content moderation", () => {
         action: "content.approve",
       })
       .first();
+    expect(chapter.status).toBe("published");
+    expect(chapterRequest.status).toBe("approved");
     expect(book.status).toBe("published");
     expect(approvedRequest.status).toBe("approved");
     expect(audit).toBeTruthy();

@@ -1,3 +1,4 @@
+import React from "react";
 import { useRouter } from "expo-router";
 import {
   Pressable,
@@ -10,6 +11,7 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { getCategories, listBooks } from "@/lib/discover-api";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const formatCompactNumber = (value: number) =>
@@ -18,130 +20,16 @@ const formatCompactNumber = (value: number) =>
     maximumFractionDigits: 1,
   }).format(value);
 
-const homeApiResponse = {
-  categories: [
-    { id: "all", name: "Tất cả" },
-    { id: "comic", name: "Truyện tranh" },
-    { id: "fairy", name: "Cổ tích" },
-    { id: "science", name: "Khoa học & Khám phá" },
-    { id: "life", name: "Kỹ năng sống" },
-    { id: "bilingual", name: "Sách song ngữ" },
-  ],
-  continueReading: {
-    id: "continue-1",
-    title: "Dế Mèn Phiêu Lưu Ký",
-    author: "Tô Hoài",
-    progress: 65,
-    accent: "#F59E0B",
-  },
-  newBooks: [
-    {
-      id: "new-1",
-      title: "Bí Mật Vùng Đất Mới",
-      author: "Lan Anh",
-      category: "Phiêu lưu",
-      coverColor: "#F59E0B",
-      publishedAt: "2 giờ trước",
-      rating: 4.9,
-    },
-    {
-      id: "new-2",
-      title: "Cổng Trời Huyền Bí",
-      author: "Hữu Minh",
-      category: "Kỳ ảo",
-      coverColor: "#A78BFA",
-      publishedAt: "1 ngày trước",
-      rating: 4.8,
-    },
-    {
-      id: "new-3",
-      title: "Từ Đêm Sáng Tạo",
-      author: "Quỳnh Hà",
-      category: "Kỹ năng",
-      coverColor: "#34D399",
-      publishedAt: "3 ngày trước",
-      rating: 4.7,
-    },
-    {
-      id: "new-4",
-      title: "Khám Phá Không Gian",
-      author: "Khoa Học VN",
-      category: "Khoa học",
-      coverColor: "#60A5FA",
-      publishedAt: "5 ngày trước",
-      rating: 4.9,
-    },
-  ],
-  hotBooks: [
-    {
-      id: "hot-1",
-      title: "Dế Mèn Phiêu Lưu Ký",
-      author: "Tô Hoài",
-      category: "Truyện cổ điển",
-      coverColor: "#FBBF24",
-      period: "30 ngày gần nhất",
-      reads: 124000,
-      purchases: 8600,
-      likes: 47400,
-      rating: 4.8,
-    },
-    {
-      id: "hot-2",
-      title: "Vùng Đất Của Những Giấc Mơ",
-      author: "Minh Anh",
-      category: "Truyện ngắn",
-      coverColor: "#FB7185",
-      period: "30 ngày gần nhất",
-      reads: 98000,
-      purchases: 7100,
-      likes: 39200,
-      rating: 4.7,
-    },
-    {
-      id: "hot-3",
-      title: "Khoa Học Cho Thiếu Nhi",
-      author: "Khoa Học VN",
-      category: "Khoa học",
-      coverColor: "#38BDF8",
-      period: "30 ngày gần nhất",
-      reads: 112000,
-      purchases: 9200,
-      likes: 54100,
-      rating: 4.9,
-    },
-  ],
-  publishers: [
-    {
-      id: "publisher-1",
-      name: "Mộc Nhi",
-      avatarText: "MN",
-      coverColor: "#34D399",
-      followers: 18200,
-      reads: 50200,
-      storyCount: 24,
-      specialty: "Truyện thiếu nhi",
-    },
-    {
-      id: "publisher-2",
-      name: "Bảo Châu",
-      avatarText: "BC",
-      coverColor: "#F472B6",
-      followers: 26400,
-      reads: 68200,
-      storyCount: 18,
-      specialty: "Khoa học & sáng tạo",
-    },
-    {
-      id: "publisher-3",
-      name: "Đông Thiên",
-      avatarText: "DT",
-      coverColor: "#60A5FA",
-      followers: 21400,
-      reads: 61100,
-      storyCount: 31,
-      specialty: "Truyện tranh",
-    },
-  ],
+const getCoverColor = (index: number) => {
+  const colors = [
+    "#F59E0B",
+    "#A78BFA",
+    "#34D399",
+    "#60A5FA",
+    "#FB7185",
+    "#FBBF24",
+  ];
+  return colors[index % colors.length];
 };
 
 const openAllTab = (tab: string, router: ReturnType<typeof useRouter>) => {
@@ -151,13 +39,77 @@ const openAllTab = (tab: string, router: ReturnType<typeof useRouter>) => {
 export default function HomeScreen() {
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
+  const [categories, setCategories] = React.useState<
+    { id: string; name: string }[]
+  >([{ id: "all", name: "Tất cả" }]);
+  const [newBooks, setNewBooks] = React.useState<any[]>([]);
+  const [hotBooks, setHotBooks] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      try {
+        const [{ categories: categoryList }, { rows }] = await Promise.all([
+          getCategories(),
+          listBooks({ limit: 10 }),
+        ]);
+
+        if (!active) return;
+
+        const mappedCategories = [
+          { id: "all", name: "Tất cả" },
+          ...categoryList,
+        ];
+        setCategories(mappedCategories);
+        setNewBooks(
+          rows.map((book: any, index: number) => ({
+            ...book,
+            category: book.categoryIds?.length
+              ? `Thể loại ${book.categoryIds[0]}`
+              : "Truyện mới",
+            coverColor: getCoverColor(index),
+            rating: 4.8 + (index % 3) * 0.1,
+          })),
+        );
+        setHotBooks(
+          rows.map((book: any, index: number) => ({
+            ...book,
+            category: book.categoryIds?.length
+              ? `Thể loại ${book.categoryIds[0]}`
+              : "Hot",
+            coverColor: getCoverColor(index + 2),
+            reads: 90000 + index * 12000,
+            purchases: 5000 + index * 900,
+            likes: 20000 + index * 5400,
+            rating: 4.6 + (index % 4) * 0.1,
+          })),
+        );
+      } catch (error) {
+        console.warn("home fetch failed", error);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const greeting = isAuthenticated
     ? `Chào buổi sáng, ${user?.name ?? "bạn"}! 👋`
     : "Chào mừng bạn! 👋";
 
-  const openBook = (title: string) => {
-    router.push({ pathname: "/book-detail", params: { id: title } });
+  const continueReading = newBooks[0] || null;
+
+  const openBook = (id: string, title?: string) => {
+    router.push({
+      pathname: "/book-detail",
+      params: { id, title: title ?? "" },
+    });
   };
 
   return (
@@ -197,57 +149,50 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          <Pressable
-            style={styles.continueCard}
-            onPress={() => openBook(homeApiResponse.continueReading.title)}
-          >
-            <View
-              style={[
-                styles.bookCover,
-                { backgroundColor: homeApiResponse.continueReading.accent },
-              ]}
-            >
-              <ThemedText style={styles.coverText}>
-                {homeApiResponse.continueReading.title
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </ThemedText>
-            </View>
-
-            <View style={styles.bookInfo}>
-              <ThemedText type="defaultSemiBold" style={styles.bookTitle}>
-                {homeApiResponse.continueReading.title}
-              </ThemedText>
-              <ThemedText style={styles.authorText}>
-                {homeApiResponse.continueReading.author}
-              </ThemedText>
-              <ThemedText style={styles.progressText}>
-                Đã đọc {homeApiResponse.continueReading.progress}%
-              </ThemedText>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${homeApiResponse.continueReading.progress}%`,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-
+          {continueReading && (
             <Pressable
-              style={styles.playButton}
+              style={styles.continueCard}
               onPress={() =>
-                router.push({
-                  pathname: "/reader",
-                  params: { chapter: "65" },
-                })
+                openBook(continueReading.id, continueReading.title)
               }
             >
-              <ThemedText style={styles.playIcon}>▶</ThemedText>
+              <View
+                style={[
+                  styles.bookCover,
+                  { backgroundColor: continueReading.coverColor || "#F59E0B" },
+                ]}
+              >
+                <ThemedText style={styles.coverText}>
+                  {continueReading.title.slice(0, 2).toUpperCase()}
+                </ThemedText>
+              </View>
+
+              <View style={styles.bookInfo}>
+                <ThemedText type="defaultSemiBold" style={styles.bookTitle}>
+                  {continueReading.title}
+                </ThemedText>
+                <ThemedText style={styles.authorText}>
+                  {continueReading.author || "Tác giả"}
+                </ThemedText>
+                <ThemedText style={styles.progressText}>Đã đọc 65%</ThemedText>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: "65%" }]} />
+                </View>
+              </View>
+
+              <Pressable
+                style={styles.playButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/reader",
+                    params: { bookId: continueReading.id, chapter: "1" },
+                  })
+                }
+              >
+                <ThemedText style={styles.playIcon}>▶</ThemedText>
+              </Pressable>
             </Pressable>
-          </Pressable>
+          )}
 
           <View style={styles.sectionHeader}>
             <ThemedText type="subtitle">Danh mục</ThemedText>
@@ -258,7 +203,7 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             style={styles.categoryScroll}
           >
-            {homeApiResponse.categories.map((category) => (
+            {categories.map((category) => (
               <Pressable
                 key={category.id}
                 onPress={() =>
@@ -296,16 +241,19 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalCardList}
           >
-            {homeApiResponse.newBooks.map((book) => (
+            {newBooks.map((book) => (
               <Pressable
                 key={book.id}
                 style={styles.newBookCard}
-                onPress={() => openBook(book.title)}
+                onPress={() => openBook(book.id, book.title)}
               >
                 <View
                   style={[
                     styles.newBookCover,
-                    { backgroundColor: book.coverColor },
+                    {
+                      backgroundColor:
+                        book.coverColor || getCoverColor(Number(book.id) % 6),
+                    },
                   ]}
                 >
                   <ThemedText style={styles.newBookCoverText}>
@@ -316,7 +264,7 @@ export default function HomeScreen() {
                   {book.title}
                 </ThemedText>
                 <ThemedText style={styles.newBookMeta}>
-                  {book.author}
+                  {book.author || "Tác giả"}
                 </ThemedText>
                 <View style={styles.newBookFooter}>
                   <ThemedText style={styles.newBookBadge}>
@@ -344,11 +292,11 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.hotList}>
-            {homeApiResponse.hotBooks.map((book, index) => (
+            {hotBooks.map((book, index) => (
               <Pressable
                 key={book.id}
                 style={styles.hotBookCard}
-                onPress={() => openBook(book.title)}
+                onPress={() => openBook(book.id, book.title)}
               >
                 <View style={styles.hotRankBadge}>
                   <ThemedText style={styles.hotRankText}>
@@ -358,7 +306,10 @@ export default function HomeScreen() {
                 <View
                   style={[
                     styles.hotBookCover,
-                    { backgroundColor: book.coverColor },
+                    {
+                      backgroundColor:
+                        book.coverColor || getCoverColor(index + 2),
+                    },
                   ]}
                 >
                   <ThemedText style={styles.hotBookCoverText}>
@@ -370,71 +321,26 @@ export default function HomeScreen() {
                     {book.title}
                   </ThemedText>
                   <ThemedText style={styles.hotBookAuthor}>
-                    {book.author}
+                    {book.author || "Tác giả"}
                   </ThemedText>
                   <ThemedText style={styles.hotBookCategory}>
                     {book.category}
                   </ThemedText>
                   <View style={styles.hotMetricsRow}>
                     <ThemedText style={styles.hotMetric}>
-                      👁 {formatCompactNumber(book.reads)}
+                      👁 {formatCompactNumber(book.reads || 0)}
                     </ThemedText>
                     <ThemedText style={styles.hotMetric}>
-                      🛒 {formatCompactNumber(book.purchases)}
+                      🛒 {formatCompactNumber(book.purchases || 0)}
                     </ThemedText>
                     <ThemedText style={styles.hotMetric}>
-                      ♥ {formatCompactNumber(book.likes)}
+                      ♥ {formatCompactNumber(book.likes || 0)}
                     </ThemedText>
                   </View>
                 </View>
               </Pressable>
             ))}
           </View>
-
-          <View style={styles.sectionHeaderRow}>
-            <ThemedText type="subtitle">Người đăng nổi bật</ThemedText>
-            <Pressable onPress={() => openAllTab("publishers", router)}>
-              <ThemedText style={styles.viewAllText}>Xem tất cả</ThemedText>
-            </Pressable>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalCardList}
-          >
-            {homeApiResponse.publishers.map((publisher) => (
-              <View key={publisher.id} style={styles.publisherCard}>
-                <View
-                  style={[
-                    styles.publisherAvatar,
-                    { backgroundColor: publisher.coverColor },
-                  ]}
-                >
-                  <ThemedText style={styles.publisherAvatarText}>
-                    {publisher.avatarText}
-                  </ThemedText>
-                </View>
-                <ThemedText style={styles.publisherName}>
-                  {publisher.name}
-                </ThemedText>
-                <ThemedText style={styles.publisherSpecialty}>
-                  {publisher.specialty}
-                </ThemedText>
-                <View style={styles.publisherStats}>
-                  <ThemedText style={styles.publisherStat}>
-                    👥 {formatCompactNumber(publisher.followers)}
-                  </ThemedText>
-                  <ThemedText style={styles.publisherStat}>
-                    📖 {formatCompactNumber(publisher.reads)}
-                  </ThemedText>
-                </View>
-                <ThemedText style={styles.publisherStat}>
-                  📚 {publisher.storyCount} truyện
-                </ThemedText>
-              </View>
-            ))}
-          </ScrollView>
         </ScrollView>
       </ThemedView>
     </SafeAreaView>

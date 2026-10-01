@@ -26,6 +26,58 @@ async function listPublic({ page, limit, search, categoryId, writingStatus }) {
   return { rows, page, limit };
 }
 
+async function listMine({ ownerId, page, limit, status, search }) {
+  const query = db("books")
+    .select("books.*")
+    .where({ owner_id: ownerId })
+    .whereNull("deleted_at")
+    .limit(limit)
+    .offset((page - 1) * limit)
+    .orderBy("updated_at", "desc");
+
+  if (status) query.where("books.status", status);
+  if (search) {
+    query.where((builder) =>
+      builder
+        .where("books.title", "like", `%${search}%`)
+        .orWhere("books.author_name", "like", `%${search}%`)
+        .orWhere("books.description", "like", `%${search}%`),
+    );
+  }
+
+  const rows = await query;
+  const summary = await db("books")
+    .where({ owner_id: ownerId })
+    .whereNull("deleted_at")
+    .select(
+      db.raw("COUNT(*) as total"),
+      db.raw("SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending"),
+      db.raw(
+        "SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) as published",
+      ),
+      db.raw(
+        "SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected",
+      ),
+      db.raw(
+        "SUM(CASE WHEN status = 'pending_delete' THEN 1 ELSE 0 END) as pending_delete",
+      ),
+    )
+    .first();
+
+  return {
+    rows,
+    page,
+    limit,
+    summary: {
+      total: Number(summary?.total || 0),
+      pending: Number(summary?.pending || 0),
+      published: Number(summary?.published || 0),
+      rejected: Number(summary?.rejected || 0),
+      pendingDelete: Number(summary?.pending_delete || 0),
+    },
+  };
+}
+
 async function findPublicById(id) {
   return db("v_public_books").where({ id }).first();
 }
@@ -110,6 +162,7 @@ async function findPendingModeration(trx, requestType, targetType, targetId) {
 
 module.exports = {
   listPublic,
+  listMine,
   findPublicById,
   findBookById,
   createBook,

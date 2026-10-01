@@ -8,6 +8,22 @@ const listBooksSchema = z.object({
   writingStatus: z.enum(["ongoing", "completed", "paused"]).optional(),
 });
 
+const listMyBooksSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  status: z
+    .enum([
+      "pending",
+      "published",
+      "rejected",
+      "draft",
+      "deleted",
+      "pending_delete",
+    ])
+    .optional(),
+  search: z.string().trim().max(255).optional(),
+});
+
 const createBookSchema = z.object({
   title: z.string().trim().min(1).max(255),
   slug: z
@@ -18,7 +34,7 @@ const createBookSchema = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
     .optional(),
   authorName: z.string().trim().max(255).optional(),
-  coverUrl: z.string().url().max(500).optional(),
+  coverPath: z.string().max(500).optional(),
   description: z.string().max(100000).optional(),
   categoryIds: z.array(z.number().int().positive()).min(1).max(10),
   writingStatus: z.enum(["ongoing", "completed", "paused"]).default("ongoing"),
@@ -68,7 +84,7 @@ const updateBookSchema = z
   .object({
     title: z.string().trim().min(1).max(255).optional(),
     authorName: z.string().trim().max(255).nullable().optional(),
-    coverUrl: z.string().url().max(500).nullable().optional(),
+    coverPath: z.string().max(500).nullable().optional(),
     description: z.string().max(100000).nullable().optional(),
     categoryIds: z.array(z.number().int().positive()).min(1).max(10).optional(),
     writingStatus: z.enum(["ongoing", "completed", "paused"]).optional(),
@@ -102,6 +118,7 @@ const deleteRequestSchema = z.object({
 
 module.exports = {
   listBooksSchema,
+  listMyBooksSchema,
   createBookSchema,
   createChapterSchema,
   updateBookSchema,

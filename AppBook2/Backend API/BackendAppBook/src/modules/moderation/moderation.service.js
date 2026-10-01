@@ -111,6 +111,37 @@ async function decide(admin, requestId, decision, approve) {
           reject_reason: null,
         },
       );
+
+      if (
+        moderation.request_type === "book_publish" &&
+        moderation.target_type === "book"
+      ) {
+        const pendingChapters = await trx("chapters")
+          .where({ book_id: moderation.target_id, status: "pending" })
+          .select("id");
+        const chapterIds = pendingChapters.map((chapter) => chapter.id);
+
+        if (chapterIds.length) {
+          await trx("chapters").whereIn("id", chapterIds).update({
+            status: "published",
+            published_at: trx.fn.now(),
+            reject_reason: null,
+          });
+          await trx("moderation_requests")
+            .whereIn("target_id", chapterIds)
+            .where({
+              request_type: "chapter_publish",
+              target_type: "chapter",
+              status: "pending",
+            })
+            .update({
+              status: "approved",
+              admin_note: decision.adminNote || null,
+              reviewed_by: admin.id,
+              reviewed_at: trx.fn.now(),
+            });
+        }
+      }
     } else if (isDelete) {
       nextStatus = payload.previousStatus || "published";
       await repository.updateTarget(

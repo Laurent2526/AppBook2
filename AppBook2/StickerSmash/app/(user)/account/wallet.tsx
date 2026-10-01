@@ -1,14 +1,40 @@
+import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { BackHeader } from "@/components/back-header";
+import { getWallet } from "@/lib/account-api";
+
 export default function WalletScreen() {
+  const [balance, setBalance] = React.useState<string | number>(0);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let active = true;
+    getWallet()
+      .then((data) => {
+        if (active) setBalance(data.wallet.balance);
+      })
+      .catch((error) => console.warn("wallet fetch failed", error))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Ví tài khoản</Text>
+        <BackHeader title="Ví tài khoản" />
         <View style={styles.balance}>
           <Text style={styles.label}>Số dư hiện tại</Text>
-          <Text style={styles.amount}>0 đ</Text>
+          <Text style={styles.amount}>
+            {loading
+              ? "Đang tải..."
+              : `${Number(balance).toLocaleString("vi-VN")} đ`}
+          </Text>
         </View>
         <Pressable style={styles.primary}>
           <Text style={styles.primaryText}>Nạp tiền</Text>
