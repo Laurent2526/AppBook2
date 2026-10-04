@@ -30,8 +30,41 @@ async function createVerifiedUser(prefix) {
 describe("Wallet and chapter purchase", () => {
   const accountIds = [];
   const bookIds = [];
+  const platformFeeTransactionIds = [];
 
   afterAll(async () => {
+    if (platformFeeTransactionIds.length) {
+      await db.transaction(async (trx) => {
+        const entries = await trx("wallet_entries")
+          .whereIn("transaction_id", platformFeeTransactionIds)
+          .where({ reason: "platform_fee" })
+          .forUpdate();
+        const totals = new Map();
+        for (const entry of entries) {
+          totals.set(
+            entry.account_id,
+            (totals.get(entry.account_id) || 0) + Number(entry.amount),
+          );
+        }
+        for (const [accountId, amount] of totals) {
+          await trx("wallets")
+            .where({ account_id: accountId })
+            .update({
+              balance: trx.raw("balance - ?", [amount]),
+              total_earned: trx.raw("total_earned - ?", [amount]),
+              version: trx.raw("version + 1"),
+            });
+        }
+        if (entries.length) {
+          await trx("wallet_entries")
+            .whereIn(
+              "id",
+              entries.map((entry) => entry.id),
+            )
+            .delete();
+        }
+      });
+    }
     if (bookIds.length) await db("books").whereIn("id", bookIds).del();
     if (accountIds.length) await db("accounts").whereIn("id", accountIds).del();
     await db.destroy();
@@ -68,9 +101,54 @@ describe("Wallet and chapter purchase", () => {
     });
     const chapterId = chapterInsert[0];
 
+    const configuredAdmin = await db("system_settings")
+      .where({ setting_key: "platform_admin_account_id" })
+      .first();
+    const configuredAdminId = configuredAdmin
+      ? Number(configuredAdmin.setting_value)
+      : null;
+    const configuredAdminAccount = configuredAdminId
+      ? await db("accounts")
+          .where({
+            id: configuredAdminId,
+            status: "active",
+          })
+          .whereIn("role", ["admin", "super_admin"])
+          .whereNull("deleted_at")
+          .first()
+      : null;
+    const platformAdmin =
+      configuredAdminAccount ||
+      (await db("accounts")
+        .where({ status: "active" })
+        .whereIn("role", ["admin", "super_admin"])
+        .whereNull("deleted_at")
+        .orderByRaw(
+          "CASE WHEN role = 'super_admin' THEN 0 ELSE 1 END, id ASC",
+        )
+        .first());
+    expect(platformAdmin).toBeTruthy();
+    const adminWalletBefore = await db("wallets")
+      .where({ account_id: platformAdmin.id })
+      .first();
+    expect(adminWalletBefore).toBeTruthy();
+
     await db("wallets")
       .where({ account_id: buyer.accountId })
       .update({ balance: "10000.00" });
+
+    const lockedChapter = await request(app)
+      .get(`/api/chapters/${chapterId}`)
+      .set("Authorization", `Bearer ${buyer.token}`);
+    expect(lockedChapter.status).toBe(200);
+    expect(lockedChapter.body.data.chapter.content).toBe(null);
+    expect(lockedChapter.body.data.chapter.requiresPurchase).toBe(true);
+
+    const publicChapters = await request(app).get(
+      `/api/books/${bookId}/chapters`,
+    );
+    expect(publicChapters.status).toBe(200);
+    expect(publicChapters.body.data.chapters[0]).not.toHaveProperty("content");
 
     const purchased = await request(app)
       .post(`/api/chapters/${chapterId}/purchase`)
@@ -79,6 +157,7 @@ describe("Wallet and chapter purchase", () => {
     expect(purchased.status).toBe(201);
     expect(purchased.body.data.status).toBe("success");
     expect(purchased.body.data.transactionId).toBeTruthy();
+    platformFeeTransactionIds.push(purchased.body.data.transactionId);
 
     const buyerWallet = await db("wallets")
       .where({ account_id: buyer.accountId })
@@ -86,17 +165,36 @@ describe("Wallet and chapter purchase", () => {
     const ownerWallet = await db("wallets")
       .where({ account_id: owner.accountId })
       .first();
+    const platformAdminWallet = await db("wallets")
+      .where({ account_id: platformAdmin.id })
+      .first();
     expect(String(buyerWallet.balance)).toBe("0.00");
     expect(String(ownerWallet.balance)).toBe("9500.00");
+    expect(String(platformAdminWallet.balance)).toBe(
+      (Number(adminWalletBefore.balance) + 500).toFixed(2),
+    );
 
     const entries = await db("wallet_entries").where({
       transaction_id: purchased.body.data.transactionId,
     });
-    expect(entries).toHaveLength(2);
+    expect(entries).toHaveLength(3);
     expect(entries.map((entry) => entry.reason).sort()).toEqual([
       "earning",
+      "platform_fee",
       "purchase",
     ]);
+    const adminFeeEntry = entries.find(
+      (entry) => entry.reason === "platform_fee",
+    );
+    expect(Number(adminFeeEntry.account_id)).toBe(Number(platformAdmin.id));
+    expect(String(adminFeeEntry.amount)).toBe("500.00");
+
+    const purchaseTransaction = await db("transactions")
+      .where({ id: purchased.body.data.transactionId })
+      .first();
+    expect(String(purchaseTransaction.amount)).toBe("10000.00");
+    expect(String(purchaseTransaction.platform_fee)).toBe("500.00");
+    expect(String(purchaseTransaction.seller_amount)).toBe("9500.00");
 
     const entitlement = await db("purchases")
       .where({ account_id: buyer.accountId, chapter_id: chapterId })
@@ -207,6 +305,7 @@ describe("Wallet and chapter purchase", () => {
       .set("Authorization", `Bearer ${buyer.token}`)
       .send();
     expect(successful.status).toBe(201);
+    platformFeeTransactionIds.push(successful.body.data.transactionId);
 
     const duplicate = await request(app)
       .post(`/api/chapters/${paidChapter[0]}/purchase`)

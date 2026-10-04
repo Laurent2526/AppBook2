@@ -6,6 +6,7 @@ const listBooksSchema = z.object({
   search: z.string().trim().max(255).optional(),
   categoryId: z.coerce.number().int().positive().optional(),
   writingStatus: z.enum(["ongoing", "completed", "paused"]).optional(),
+  sortBy: z.enum(["latest", "hot"]).default("latest"),
 });
 
 const listMyBooksSchema = z.object({

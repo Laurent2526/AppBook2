@@ -20,6 +20,23 @@ async function findRating(trx, accountId, bookId) {
     .first();
 }
 
+async function listRatingsByAccount(accountId) {
+  return db("ratings")
+    .join("books", "books.id", "ratings.book_id")
+    .select(
+      "ratings.id",
+      "ratings.book_id",
+      "ratings.score",
+      "ratings.created_at",
+      "ratings.updated_at",
+      "books.title as book_title",
+      "books.cover_url",
+    )
+    .where({ "ratings.account_id": accountId })
+    .whereNull("books.deleted_at")
+    .orderBy("ratings.updated_at", "desc");
+}
+
 async function createRating(trx, data) {
   const [id] = await trx("ratings").insert(data);
   return trx("ratings").where({ id }).first();
@@ -62,22 +79,25 @@ async function createComment(trx, data) {
 
 async function listVisibleComments(bookId) {
   return db("comments")
+    .join("accounts", "accounts.id", "comments.account_id")
     .select(
-      "id",
-      "account_id",
-      "book_id",
-      "chapter_id",
-      "parent_id",
-      "content",
-      "status",
-      "like_count",
-      "reply_count",
-      "created_at",
-      "updated_at",
+      "comments.id",
+      "comments.account_id",
+      "accounts.username as account_username",
+      "accounts.full_name as account_name",
+      "comments.book_id",
+      "comments.chapter_id",
+      "comments.parent_id",
+      "comments.content",
+      "comments.status",
+      "comments.like_count",
+      "comments.reply_count",
+      "comments.created_at",
+      "comments.updated_at",
     )
-    .where({ book_id: bookId, status: "visible" })
-    .whereNull("deleted_at")
-    .orderBy("created_at", "asc");
+    .where({ "comments.book_id": bookId, "comments.status": "visible" })
+    .whereNull("comments.deleted_at")
+    .orderBy("comments.created_at", "asc");
 }
 
 async function updateComment(trx, id, content) {
@@ -105,6 +125,7 @@ module.exports = {
   findPublicBook,
   findPublishedChapter,
   findRating,
+  listRatingsByAccount,
   createRating,
   updateRating,
   refreshRatingAggregate,

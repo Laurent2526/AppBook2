@@ -170,8 +170,6 @@ Phạm vi tài liệu Đặc tả nghiệp vụ chi tiết, quy trình xử lý,
    Bổ sung so với bản mô tả gốc — bản gốc chưa có cơ chế hoàn tiền:
    • Người đọc có thể gửi yêu cầu khiếu nại nếu chương mua bị lỗi hiển thị, trùng nội dung, hoặc bị gỡ do vi phạm sau khi đã mua.
    • Admin xem xét và có thể hoàn tiền vào ví người đọc (trạng thái giao dịch chuyển Refunded); khoản đã chia cho người đăng trước đó có thể bị thu hồi tương ứng.
-   6.5. Lưu ý nghĩa vụ thuế
-   Lưu ý: Người đăng có doanh thu từ nền tảng có thể thuộc diện phải kê khai thuế thu nhập cá nhân theo quy định pháp luật hiện hành. Hệ thống nên cung cấp báo cáo doanh thu theo năm để hỗ trợ người đăng kê khai, và cân nhắc yêu cầu thông tin mã số thuế khi rút tiền vượt một ngưỡng nhất định.
 7. Nghiệp vụ kiểm duyệt nội dung
    Đây là nhóm nghiệp vụ được bổ sung hoàn toàn mới nhằm khắc phục lỗ hổng lớn nhất của bản mô tả gốc: hệ thống cho phép người dùng tự do đăng nội dung UGC (User Generated Content) nhưng chưa có quy trình kiểm soát chất lượng và tính hợp pháp của nội dung.
    7.1. Vòng đời trạng thái nội dung

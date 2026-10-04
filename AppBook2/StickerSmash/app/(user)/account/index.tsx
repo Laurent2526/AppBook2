@@ -146,6 +146,20 @@ export default function ProfileScreen() {
               {user?.email ?? "Chưa đăng nhập"}
             </ThemedText>
 
+            {isAuthenticated && user?.id ? (
+              <View style={styles.accountIdCard}>
+                <ThemedText style={styles.accountIdLabel}>
+                  ID tài khoản · Nhấn giữ để sao chép
+                </ThemedText>
+                <ThemedText selectable style={styles.accountIdValue}>
+                  {user.id}
+                </ThemedText>
+                <ThemedText style={styles.accountIdHint}>
+                  Chia sẻ ID này để người khác tìm và nhắn tin cho bạn.
+                </ThemedText>
+              </View>
+            ) : null}
+
             <View style={styles.badge}>
               <ThemedText style={styles.badgeText}>
                 {isAuthenticated ? "Tài khoản đã xác thực" : "Chưa đăng nhập"}
@@ -282,6 +296,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6B7280",
     marginBottom: 12,
+  },
+  accountIdCard: {
+    width: "100%",
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  accountIdLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  accountIdValue: {
+    marginTop: 4,
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: "700",
+    color: "#0F766E",
+  },
+  accountIdHint: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#6B7280",
   },
   badge: {
     backgroundColor: "#E0F2FE",

@@ -28,5 +28,6 @@ router.patch(
   authenticate,
   controller.markNotificationRead,
 );
+router.put("/me/push-token", authenticate, controller.registerPushToken);
 
 module.exports = router;

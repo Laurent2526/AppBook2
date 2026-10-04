@@ -72,6 +72,19 @@ async function listConversations(accountId) {
       "conversations.created_at",
       "other.id as other_account_id",
       "other.username as other_username",
+      "other.full_name as other_full_name",
+      "other.avatar_url as other_avatar_url",
+      "last_message.content as last_message_content",
+      "last_message.sender_id as last_message_sender_id",
+      db.raw(
+        "(SELECT COUNT(*) FROM messages unread WHERE unread.conversation_id = conversations.id AND unread.receiver_id = ? AND unread.is_read = 0 AND unread.deleted_at IS NULL) AS unread_count",
+        [accountId],
+      ),
+    )
+    .leftJoin(
+      "messages as last_message",
+      "last_message.id",
+      "conversations.last_message_id",
     )
     .where((builder) =>
       builder
@@ -141,6 +154,29 @@ async function createNotification(data) {
   return db("notifications").where({ id }).first();
 }
 
+async function registerPushToken(accountId, sessionId, token) {
+  await db("user_sessions")
+    .where({ id: sessionId, account_id: accountId })
+    .whereNull("revoked_at")
+    .update({ fcm_token: token, last_active_at: db.fn.now() });
+}
+
+async function listPushTokens(accountId) {
+  return db("user_sessions")
+    .select("id", "fcm_token")
+    .where({ account_id: accountId })
+    .whereNull("revoked_at")
+    .where("expires_at", ">", db.fn.now())
+    .whereNotNull("fcm_token");
+}
+
+async function markNotificationPushed(notificationId) {
+  await db("notifications")
+    .where({ id: notificationId })
+    .whereNull("pushed_at")
+    .update({ pushed_at: db.fn.now() });
+}
+
 async function listNotifications(accountId) {
   return db("notifications")
     .select(
@@ -192,4 +228,7 @@ module.exports = {
   listNotifications,
   countUnreadNotifications,
   markNotificationRead,
+  registerPushToken,
+  listPushTokens,
+  markNotificationPushed,
 };

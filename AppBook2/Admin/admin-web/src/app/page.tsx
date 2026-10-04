@@ -1,60 +1,17 @@
 "use client";
 
-import { Bell, ChevronDown, MoreHorizontal, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Bell } from "lucide-react";
+import { useState } from "react";
+import { AdminDashboard } from "@/components/admin-dashboard";
+import { ManagementPanel } from "@/components/management-panel";
 import { ModerationPanel } from "@/components/moderation-panel";
+import { ReportsPanel } from "@/components/reports-panel";
 import { Sidebar } from "@/components/sidebar";
-import {
-  books as initialBooks,
-  formatCurrency,
-  withdrawals as initialWithdrawals,
-} from "@/services/mock-data";
-import type { Book, ContentStatus, Withdrawal } from "@/types/admin";
-
-const statusLabels: Record<ContentStatus, string> = {
-  Pending: "Chờ duyệt",
-  Published: "Đã xuất bản",
-  Rejected: "Từ chối",
-  Hidden: "Đã ẩn",
-  "Pending Delete": "Chờ xóa",
-};
-
-function Status({ status }: { status: ContentStatus }) {
-  return (
-    <span
-      className={`status ${status === "Pending" ? "pending" : status === "Published" ? "published" : status === "Rejected" ? "rejected" : "delete"}`}
-    >
-      {statusLabels[status]}
-    </span>
-  );
-}
+import { StatisticsPanel } from "@/components/statistics-panel";
+import { WithdrawalsPanel } from "@/components/withdrawals-panel";
 
 export default function AdminPage() {
   const [active, setActive] = useState("Tổng quan");
-  const [books, setBooks] = useState(initialBooks);
-  const [withdrawals, setWithdrawals] = useState(initialWithdrawals);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"All" | ContentStatus>("All");
-  const visibleBooks = useMemo(
-    () =>
-      books.filter(
-        (book) =>
-          (filter === "All" || book.status === filter) &&
-          `${book.title} ${book.author}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
-      ),
-    [books, filter, query],
-  );
-
-  const updateBook = (id: string, status: ContentStatus) =>
-    setBooks((current) =>
-      current.map((book) => (book.id === id ? { ...book, status } : book)),
-    );
-  const updateWithdrawal = (id: string, status: Withdrawal["status"]) =>
-    setWithdrawals((current) =>
-      current.map((item) => (item.id === id ? { ...item, status } : item)),
-    );
 
   return (
     <div className="admin-shell">
@@ -62,265 +19,36 @@ export default function AdminPage() {
       <main className="content">
         <header className="topbar">
           <div>
-            <div className="eyebrow">Thứ ba, 22 tháng 9, 2026</div>
+            <div className="eyebrow">
+              {new Intl.DateTimeFormat("vi-VN", {
+                dateStyle: "full",
+              }).format(new Date())}
+            </div>
             <h1>
               {active === "Tổng quan"
-                ? "Chào buổi sáng, Quản trị viên"
+                ? "Chào mừng đến APPBOOK Admin"
                 : active}
             </h1>
           </div>
           <div className="top-actions">
-            <button className="icon-button" aria-label="Tìm kiếm">
-              <Search />
-            </button>
-            <button className="icon-button" aria-label="Thông báo">
-              <Bell />
-            </button>
-            <div className="avatar profile">QA</div>
-            <ChevronDown size={15} color="#78817c" />
+            <Bell size={18} color="#78817c" />
+            <div className="avatar profile">AD</div>
           </div>
         </header>
-        {active === "Kiểm duyệt" ? (
-          <ModerationPanel />
-        ) : active === "Tổng quan" ? (
-          <>
-            <section className="stats">
-              <article className="stat lime">
-                <div className="stat-top">
-                  Doanh thu tháng <span>↗</span>
-                </div>
-                <strong>₫284.6M</strong>
-                <span className="trend">+18.4% so với tháng trước</span>
-              </article>
-              <article className="stat">
-                <div className="stat-top">
-                  Người dùng <span>↗</span>
-                </div>
-                <strong>12,840</strong>
-                <span className="trend">+8.2% so với tháng trước</span>
-              </article>
-              <article className="stat">
-                <div className="stat-top">
-                  Sách / truyện <span>↗</span>
-                </div>
-                <strong>3,428</strong>
-                <span className="trend">+5.7% so với tháng trước</span>
-              </article>
-              <article className="stat">
-                <div className="stat-top">
-                  Chờ kiểm duyệt <span>!</span>
-                </div>
-                <strong>24</strong>
-                <span className="trend down">Cần xử lý hôm nay</span>
-              </article>
-            </section>
-            <section className="grid">
-              <article className="panel">
-                <div className="panel-head">
-                  <h2>Doanh thu nền tảng</h2>
-                  <button className="filter">
-                    30 ngày <ChevronDown size={12} />
-                  </button>
-                </div>
-                <div className="chart">
-                  <div className="chart-grid" />
-                  <div className="chart-bars">
-                    {[45, 60, 38, 72, 54, 82, 64, 94, 72, 85, 67, 96].map(
-                      (height, index) => (
-                        <div className="bar-group" key={index}>
-                          <i className="bar" style={{ height: `${height}%` }} />
-                          <i
-                            className="bar primary"
-                            style={{ height: `${Math.max(22, height - 25)}%` }}
-                          />
-                          <span className="bar-label">{index + 1}</span>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                </div>
-              </article>
-              <article className="panel">
-                <div className="panel-head">
-                  <h2>Hoạt động gần đây</h2>
-                  <MoreHorizontal size={17} color="#78817c" />
-                </div>
-                <div className="activity">
-                  <div className="activity-row">
-                    <i className="activity-dot" />
-                    <p>
-                      <b>Linh Chi</b> gửi truyện mới để duyệt
-                      <time>12 phút trước</time>
-                    </p>
-                  </div>
-                  <div className="activity-row">
-                    <i className="activity-dot blue" />
-                    <p>
-                      <b>Đỗ Minh</b> yêu cầu rút ₫8.2M<time>1 giờ trước</time>
-                    </p>
-                  </div>
-                  <div className="activity-row">
-                    <i className="activity-dot green" />
-                    <p>
-                      <b>Nguyễn Minh Anh</b> vừa đăng ký<time>2 giờ trước</time>
-                    </p>
-                  </div>
-                  <div className="activity-row">
-                    <i className="activity-dot" />
-                    <p>
-                      <b>Thành phố sau mưa</b> nhận 24 báo cáo
-                      <time>3 giờ trước</time>
-                    </p>
-                  </div>
-                </div>
-              </article>
-            </section>
-          </>
+        {active === "Tổng quan" ? <AdminDashboard /> : null}
+        {active === "Sách & truyện" ? <ManagementPanel kind="books" /> : null}
+        {active === "Kiểm duyệt" ? <ModerationPanel /> : null}
+        {active === "Người dùng" ? <ManagementPanel kind="accounts" /> : null}
+        {active === "Tài chính" ? <WithdrawalsPanel /> : null}
+        {active === "Báo cáo" ? <ReportsPanel /> : null}
+        {active === "Thống kê" ? <StatisticsPanel /> : null}
+        {["Cài đặt", "Đăng xuất"].includes(active) ? (
+          <section className="panel">
+            <div className="data-empty">
+              {active} chưa được triển khai trong trang quản trị.
+            </div>
+          </section>
         ) : null}
-        <section className="panel section">
-          <div className="panel-head">
-            <h2>
-              {active === "Tài chính"
-                ? "Yêu cầu rút tiền"
-                : "Nội dung cần xử lý"}
-            </h2>
-            <div className="table-tools">
-              <div className="search">
-                <Search size={13} />{" "}
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Tìm kiếm..."
-                />
-              </div>
-              <select
-                className="filter"
-                value={filter}
-                onChange={(event) =>
-                  setFilter(event.target.value as "All" | ContentStatus)
-                }
-              >
-                <option value="All">Tất cả trạng thái</option>
-                <option value="Pending">Chờ duyệt</option>
-                <option value="Published">Đã xuất bản</option>
-                <option value="Rejected">Từ chối</option>
-                <option value="Pending Delete">Chờ xóa</option>
-              </select>
-            </div>
-          </div>
-          {active === "Tài chính" ? (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Mã yêu cầu</th>
-                    <th>Người đăng</th>
-                    <th>Số tiền</th>
-                    <th>Kênh nhận</th>
-                    <th>Thời gian</th>
-                    <th>Trạng thái</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {withdrawals.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <b>{item.id}</b>
-                      </td>
-                      <td>{item.author}</td>
-                      <td>
-                        <b>{formatCurrency(item.amount)}</b>
-                      </td>
-                      <td>{item.method}</td>
-                      <td>{item.requestedAt}</td>
-                      <td>
-                        <span
-                          className={`status ${item.status === "Pending" ? "pending" : "published"}`}
-                        >
-                          {item.status === "Pending" ? "Chờ xử lý" : "Đã xử lý"}
-                        </span>
-                      </td>
-                      <td>
-                        {item.status === "Pending" && (
-                          <button
-                            className="action-btn"
-                            onClick={() =>
-                              updateWithdrawal(item.id, "Processed")
-                            }
-                          >
-                            Duyệt
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Nội dung</th>
-                    <th>Thể loại</th>
-                    <th>Trạng thái</th>
-                    <th>Lượt đọc</th>
-                    <th>Doanh thu</th>
-                    <th>Cập nhật</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleBooks.map((book: Book) => (
-                    <tr key={book.id}>
-                      <td>
-                        <div className="book-cell">
-                          <i
-                            className="cover"
-                            style={{ background: book.cover }}
-                          />
-                          <div>
-                            <strong>{book.title}</strong>
-                            <span>
-                              {book.id} · {book.author}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td>{book.category}</td>
-                      <td>
-                        <Status status={book.status} />
-                      </td>
-                      <td>{book.reads.toLocaleString("vi-VN")}</td>
-                      <td>{formatCurrency(book.revenue)}</td>
-                      <td>{book.updatedAt}</td>
-                      <td>
-                        {book.status === "Pending" && (
-                          <button
-                            className="action-btn"
-                            onClick={() => updateBook(book.id, "Published")}
-                          >
-                            Duyệt
-                          </button>
-                        )}
-                        {book.status === "Pending Delete" && (
-                          <button
-                            className="action-btn"
-                            onClick={() => updateBook(book.id, "Hidden")}
-                          >
-                            Ẩn
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
       </main>
     </div>
   );

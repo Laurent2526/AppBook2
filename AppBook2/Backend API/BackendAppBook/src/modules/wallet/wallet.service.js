@@ -16,6 +16,16 @@ const purchaseErrors = {
   ],
   ALREADY_PURCHASED: [409, "ALREADY_PURCHASED", "Chương đã được mua trước đó"],
   INSUFFICIENT_BALANCE: [402, "INSUFFICIENT_BALANCE", "Số dư ví không đủ"],
+  PLATFORM_ADMIN_NOT_CONFIGURED: [
+    503,
+    "PLATFORM_ADMIN_NOT_CONFIGURED",
+    "Chưa cấu hình tài khoản nhận phí nền tảng",
+  ],
+  PLATFORM_ADMIN_WALLET_NOT_FOUND: [
+    503,
+    "PLATFORM_ADMIN_WALLET_NOT_FOUND",
+    "Không tìm thấy ví nhận phí nền tảng",
+  ],
 };
 
 async function getWallet(accountId) {

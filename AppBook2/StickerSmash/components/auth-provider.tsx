@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import { authApi, clearAuthTokens, setAuthTokens } from "@/lib/api-client";
+import { registerPushNotificationsForSession } from "@/lib/push-notifications";
 
 export type AuthUser = {
   id: string;
@@ -66,6 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     setAuthTokens(result);
     setUser(accountToUser(result.account));
+    void registerPushNotificationsForSession().catch((error) =>
+      console.warn("push token registration failed", error),
+    );
   }, []);
 
   const register = useCallback(
@@ -112,6 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setAuthTokens(loginResult);
         setUser(accountToUser(loginResult.account));
+        void registerPushNotificationsForSession().catch((error) =>
+          console.warn("push token registration failed", error),
+        );
         setPendingRegistration(null);
       } else {
         setUser(accountToUser(result.account));

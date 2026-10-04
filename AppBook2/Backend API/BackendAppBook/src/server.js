@@ -1,8 +1,12 @@
 const app = require("./app");
 const env = require("./config/env");
 const db = require("./config/db");
+const http = require("http");
+const { attachRealtime } = require("./modules/messaging/realtime");
 
-const server = app.listen(env.PORT, () => {
+const server = http.createServer(app);
+attachRealtime(server);
+server.listen(env.PORT, () => {
   console.log(`APPBOOK API running on port ${env.PORT}`);
 });
 

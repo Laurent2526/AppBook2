@@ -12,12 +12,11 @@
     "module": "esnext",
     "moduleResolution": "bundler",
 
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
 
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
 
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -32,14 +31,7 @@
     ]
   },
 
-  "include": [
-    "next-env.d.ts",
-    ".next/types/**/*.ts",
-    "**/*.ts",
-    "**/*.tsx"
-  ],
+  "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx"],
 
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

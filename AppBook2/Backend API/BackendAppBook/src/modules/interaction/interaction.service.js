@@ -105,6 +105,10 @@ async function listComments(bookId) {
   });
 }
 
+async function listMyRatings(accountId) {
+  return repository.listRatingsByAccount(accountId);
+}
+
 async function updateComment(accountId, role, commentId, content) {
   return db.transaction(async (trx) => {
     const comment = await repository.findComment(trx, commentId);
@@ -150,6 +154,7 @@ module.exports = {
   rate,
   createComment,
   listComments,
+  listMyRatings,
   updateComment,
   deleteComment,
 };

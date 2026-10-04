@@ -60,10 +60,18 @@ async function addLedger(trx, data) {
 }
 
 async function listAdmin() {
-  return db("withdraw_requests").orderBy([
-    { column: "status", order: "asc" },
-    { column: "created_at", order: "asc" },
-  ]);
+  return db("withdraw_requests")
+    .leftJoin("accounts", "accounts.id", "withdraw_requests.account_id")
+    .select(
+      "withdraw_requests.*",
+      "accounts.username as account_username",
+      "accounts.full_name as account_full_name",
+      "accounts.email as account_email",
+    )
+    .orderBy([
+      { column: "withdraw_requests.status", order: "asc" },
+      { column: "withdraw_requests.created_at", order: "asc" },
+    ]);
 }
 
 async function findRequestForUpdate(trx, id) {

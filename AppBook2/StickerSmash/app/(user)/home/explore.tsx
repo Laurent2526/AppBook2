@@ -1,7 +1,12 @@
 import { BackHeader } from "@/components/back-header";
+import { BookCover } from "@/components/book-cover";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { getCategories, listBooks } from "@/lib/discover-api";
+import {
+  getCategories,
+  getFeaturedAuthors,
+  listBooks,
+} from "@/lib/discover-api";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
@@ -36,7 +41,11 @@ const getCoverColor = (index: number) => {
 
 export default function HomeExploreScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string; category?: string }>();
+  const params = useLocalSearchParams<{
+    tab?: string;
+    category?: string;
+    search?: string;
+  }>();
   const routeTab =
     params.tab === "new"
       ? "Truyện mới"
@@ -59,18 +68,46 @@ export default function HomeExploreScreen() {
     { id: string; name: string }[]
   >([]);
   const [books, setBooks] = React.useState<any[]>([]);
-  const [category, setCategory] = React.useState("Tất cả");
+  const [featuredAuthors, setFeaturedAuthors] = React.useState<any[]>([]);
+  const [categoryId, setCategoryId] = React.useState(
+    String(params.category || "all"),
+  );
+  const [search, setSearch] = React.useState(String(params.search || ""));
+  const [appliedSearch, setAppliedSearch] = React.useState(
+    String(params.search || ""),
+  );
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+  const category =
+    categories.find((item) => item.id === categoryId)?.name || "Tất cả";
 
   React.useEffect(() => {
     let active = true;
 
     const load = async () => {
       try {
-        const [{ categories: categoryList }, { rows }] = await Promise.all([
-          getCategories(),
-          listBooks({ limit: 20 }),
-        ]);
+        const { categories: categoryList } = await getCategories();
+        const selectedCategoryId =
+          categoryId === "all" ? undefined : categoryId;
+        let nextBooks: any[] = [];
+        let nextAuthors: any[] = [];
+
+        if (activeTab === "Người đăng nổi bật") {
+          const result = await getFeaturedAuthors(
+            20,
+            appliedSearch || undefined,
+          );
+          nextAuthors = result.authors;
+        } else {
+          const { rows } = await listBooks({
+            limit: 30,
+            search: appliedSearch || undefined,
+            categoryId:
+              activeTab === "Danh mục" ? selectedCategoryId : undefined,
+            sortBy: activeTab === "Truyện hot" ? "hot" : "latest",
+          });
+          nextBooks = rows;
+        }
 
         if (!active) return;
 
@@ -80,22 +117,28 @@ export default function HomeExploreScreen() {
         ];
         setCategories(mappedCategories);
         setBooks(
-          rows.map((book: any, index: number) => ({
+          nextBooks.map((book: any, index: number) => ({
             ...book,
             color: getCoverColor(index),
-            tag: book.categoryIds?.length
-              ? `Thể loại ${book.categoryIds[0]}`
-              : "Truyện mới",
-            updated: "Mới cập nhật",
+            tag:
+              book.categoryIds
+                ?.map(
+                  (id: string) =>
+                    categoryList.find((item) => item.id === id)?.name,
+                )
+                .filter(Boolean)
+                .join(" · ") || "Truyện",
           })),
         );
-
-        const initialCategory =
-          mappedCategories.find((item) => item.id === params.category)?.name ??
-          "Tất cả";
-        setCategory(initialCategory);
+        setFeaturedAuthors(nextAuthors);
       } catch (error) {
         console.warn("explore fetch failed", error);
+        if (active)
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Không tải được dữ liệu khám phá.",
+          );
       } finally {
         if (active) setLoading(false);
       }
@@ -105,19 +148,10 @@ export default function HomeExploreScreen() {
     return () => {
       active = false;
     };
-  }, [params.category]);
+  }, [activeTab, appliedSearch, categoryId]);
 
   const openBook = (id: string) =>
     router.push({ pathname: "/book-detail", params: { id } });
-
-  const visibleBooks =
-    category === "Tất cả"
-      ? books
-      : books.filter(
-          (book) =>
-            book.tag?.toLowerCase().includes(category.toLowerCase()) ||
-            book.title?.toLowerCase().includes(category.toLowerCase()),
-        );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
@@ -131,7 +165,11 @@ export default function HomeExploreScreen() {
           {tabs.map((tab) => (
             <Pressable
               key={tab}
-              onPress={() => setSelectedTab({ route: params.tab, value: tab })}
+              onPress={() => {
+                setLoading(true);
+                setError("");
+                setSelectedTab({ route: params.tab, value: tab });
+              }}
               style={styles.tab}
             >
               <Text
@@ -149,8 +187,20 @@ export default function HomeExploreScreen() {
             placeholder="Tìm tên truyện, tác giả, thẻ..."
             placeholderTextColor="#9CA3AF"
             style={styles.input}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            onSubmitEditing={() => {
+              setLoading(true);
+              setError("");
+              setAppliedSearch(search.trim());
+            }}
           />
         </View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {loading ? (
+          <Text style={styles.loading}>Đang tải dữ liệu...</Text>
+        ) : null}
         {activeTab === "Danh mục" && (
           <ScrollView
             contentContainerStyle={styles.content}
@@ -160,16 +210,20 @@ export default function HomeExploreScreen() {
               {categories.map((item) => (
                 <Pressable
                   key={item.id}
-                  onPress={() => setCategory(item.name)}
+                  onPress={() => {
+                    setLoading(true);
+                    setError("");
+                    setCategoryId(item.id);
+                  }}
                   style={[
                     styles.pill,
-                    category === item.name && styles.selectedPill,
+                    categoryId === item.id && styles.selectedPill,
                   ]}
                 >
                   <Text
                     style={[
                       styles.pillText,
-                      category === item.name && styles.selectedText,
+                      categoryId === item.id && styles.selectedText,
                     ]}
                   >
                     {item.name}
@@ -181,7 +235,7 @@ export default function HomeExploreScreen() {
               {category} · danh sách truyện
             </ThemedText>
             <FlatList
-              data={visibleBooks}
+              data={books}
               horizontal
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.cards}
@@ -205,7 +259,7 @@ export default function HomeExploreScreen() {
                 <BookCard
                   item={item}
                   onPress={() => openBook(item.id)}
-                  meta={item.updated}
+                  meta={item.status || "Mới cập nhật"}
                 />
               )}
             />
@@ -221,11 +275,14 @@ export default function HomeExploreScreen() {
               >
                 <Text style={styles.rank}>#{index + 1}</Text>
                 <View
-                  style={[styles.hotCover, { backgroundColor: item.color }]}
+                  style={styles.hotCover}
                 >
-                  <Text style={styles.coverText}>
-                    {item.title.split(" ")[0]}
-                  </Text>
+                  <BookCover
+                    uri={item.coverUrl}
+                    title={item.title}
+                    fallbackColor={item.color}
+                    style={styles.hotCoverImage}
+                  />
                 </View>
                 <View style={styles.info}>
                   <ThemedText style={styles.title}>{item.title}</ThemedText>
@@ -233,8 +290,8 @@ export default function HomeExploreScreen() {
                     {item.author || "Tác giả"} · {item.tag}
                   </Text>
                   <Text style={styles.metrics}>
-                    👁 {compact(90000 + index * 12000)} ♥{" "}
-                    {compact(20000 + index * 8000)}
+                    👁 {compact(item.views || 0)} · 🛒{" "}
+                    {compact(item.purchases || 0)}
                   </Text>
                 </View>
               </Pressable>
@@ -247,28 +304,31 @@ export default function HomeExploreScreen() {
               Người đăng tiêu biểu trong 30 ngày
             </ThemedText>
             <FlatList
-              data={books.slice(0, 4)}
+              data={featuredAuthors}
               horizontal
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.cards}
               renderItem={({ item }) => (
                 <View style={styles.publisher}>
                   <View
-                    style={[styles.avatar, { backgroundColor: item.color }]}
+                    style={[
+                      styles.avatar,
+                      { backgroundColor: getCoverColor(Number(item.id) % 6) },
+                    ]}
                   >
                     <Text style={styles.avatarText}>
-                      {(item.author || "A").slice(0, 2).toUpperCase()}
+                      {(item.name || "A").slice(0, 2).toUpperCase()}
                     </Text>
                   </View>
                   <ThemedText style={styles.publisherName}>
-                    {item.author || "Tác giả"}
+                    {item.name || "Tác giả"}
                   </ThemedText>
-                  <Text style={styles.meta}>{item.tag}</Text>
+                  <Text style={styles.meta}>{item.bookCount} truyện</Text>
                   <Text style={styles.metrics}>
-                    📚 {item.categoryIds?.length ?? 1} thể loại
+                    👁 {compact(item.views)} đọc
                   </Text>
                   <Text style={styles.metrics}>
-                    👁 {compact(90000 + Number(item.id) * 5000)} đọc
+                    ♥ {compact(item.followers)} theo dõi
                   </Text>
                 </View>
               )}
@@ -288,6 +348,7 @@ function BookCard({
   item: {
     id: string;
     title: string;
+    coverUrl?: string;
     author?: string;
     tag?: string;
     color?: string;
@@ -297,11 +358,12 @@ function BookCard({
 }) {
   return (
     <Pressable style={styles.card} onPress={onPress}>
-      <View
-        style={[styles.cover, { backgroundColor: item.color || "#F59E0B" }]}
-      >
-        <Text style={styles.coverText}>{item.title.split(" ")[0]}</Text>
-      </View>
+      <BookCover
+        uri={item.coverUrl}
+        title={item.title}
+        fallbackColor={item.color}
+        style={styles.cover}
+      />
       <ThemedText style={styles.title}>{item.title}</ThemedText>
       <Text style={styles.meta}>{item.author || "Tác giả"}</Text>
       <Text style={styles.metrics}>
@@ -366,14 +428,13 @@ const styles = StyleSheet.create({
   cover: {
     height: 150,
     borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
     marginBottom: 10,
   },
-  coverText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
   title: { color: "#111827", fontWeight: "700", marginBottom: 4 },
   meta: { color: "#6B7280", fontSize: 12, marginBottom: 6 },
   metrics: { color: "#374151", fontSize: 11, lineHeight: 20 },
+  error: { color: "#B44D4D", paddingHorizontal: 18, paddingTop: 8 },
+  loading: { color: "#6B7280", paddingHorizontal: 18, paddingTop: 8 },
   hotRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -386,11 +447,9 @@ const styles = StyleSheet.create({
   hotCover: {
     width: 70,
     height: 92,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
     marginRight: 12,
   },
+  hotCoverImage: { flex: 1, borderRadius: 12 },
   info: { flex: 1 },
   publisher: {
     width: 180,

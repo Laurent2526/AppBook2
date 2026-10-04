@@ -9,6 +9,7 @@ import {
 } from "react-native";
 
 import { useAuth } from "@/components/auth-provider";
+import { BookCover } from "@/components/book-cover";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { getCategories, listBooks } from "@/lib/discover-api";
@@ -45,15 +46,21 @@ export default function HomeScreen() {
   const [newBooks, setNewBooks] = React.useState<any[]>([]);
   const [hotBooks, setHotBooks] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [search, setSearch] = React.useState("");
 
   React.useEffect(() => {
     let active = true;
 
     const load = async () => {
       try {
-        const [{ categories: categoryList }, { rows }] = await Promise.all([
+        const [
+          { categories: categoryList },
+          { rows: latestRows },
+          { rows: hotRows },
+        ] = await Promise.all([
           getCategories(),
-          listBooks({ limit: 10 }),
+          listBooks({ limit: 10, sortBy: "latest" }),
+          listBooks({ limit: 10, sortBy: "hot" }),
         ]);
 
         if (!active) return;
@@ -63,27 +70,27 @@ export default function HomeScreen() {
           ...categoryList,
         ];
         setCategories(mappedCategories);
+        const categoryName = (book: any) =>
+          book.categoryIds
+            ?.map(
+              (id: string) =>
+                categoryList.find((category) => category.id === id)?.name,
+            )
+            .filter(Boolean)
+            .join(" · ") || "Truyện";
+
         setNewBooks(
-          rows.map((book: any, index: number) => ({
+          latestRows.map((book: any, index: number) => ({
             ...book,
-            category: book.categoryIds?.length
-              ? `Thể loại ${book.categoryIds[0]}`
-              : "Truyện mới",
+            category: categoryName(book),
             coverColor: getCoverColor(index),
-            rating: 4.8 + (index % 3) * 0.1,
           })),
         );
         setHotBooks(
-          rows.map((book: any, index: number) => ({
+          hotRows.map((book: any, index: number) => ({
             ...book,
-            category: book.categoryIds?.length
-              ? `Thể loại ${book.categoryIds[0]}`
-              : "Hot",
+            category: categoryName(book),
             coverColor: getCoverColor(index + 2),
-            reads: 90000 + index * 12000,
-            purchases: 5000 + index * 900,
-            likes: 20000 + index * 5400,
-            rating: 4.6 + (index % 4) * 0.1,
           })),
         );
       } catch (error) {
@@ -143,11 +150,36 @@ export default function HomeScreen() {
               placeholder="Tìm kiếm tên sách, tác giả, thể loại..."
               placeholderTextColor="#8A8A8A"
               style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
+              onSubmitEditing={() => {
+                const term = search.trim();
+                if (term) {
+                  router.push({
+                    pathname: "/(user)/home/explore",
+                    params: { tab: "new", search: term },
+                  });
+                }
+              }}
             />
-            <Pressable style={styles.filterButton}>
+            <Pressable
+              style={styles.filterButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/(user)/home/explore",
+                  params: { tab: "categories" },
+                })
+              }
+            >
               <ThemedText style={styles.filterIcon}>☰</ThemedText>
             </Pressable>
           </View>
+          {loading ? (
+            <ThemedText style={styles.newBookMeta}>
+              Đang tải sách/truyện...
+            </ThemedText>
+          ) : null}
 
           {continueReading && (
             <Pressable
@@ -156,16 +188,12 @@ export default function HomeScreen() {
                 openBook(continueReading.id, continueReading.title)
               }
             >
-              <View
-                style={[
-                  styles.bookCover,
-                  { backgroundColor: continueReading.coverColor || "#F59E0B" },
-                ]}
-              >
-                <ThemedText style={styles.coverText}>
-                  {continueReading.title.slice(0, 2).toUpperCase()}
-                </ThemedText>
-              </View>
+              <BookCover
+                uri={continueReading.coverUrl}
+                title={continueReading.title}
+                fallbackColor={continueReading.coverColor}
+                style={styles.bookCover}
+              />
 
               <View style={styles.bookInfo}>
                 <ThemedText type="defaultSemiBold" style={styles.bookTitle}>
@@ -247,19 +275,12 @@ export default function HomeScreen() {
                 style={styles.newBookCard}
                 onPress={() => openBook(book.id, book.title)}
               >
-                <View
-                  style={[
-                    styles.newBookCover,
-                    {
-                      backgroundColor:
-                        book.coverColor || getCoverColor(Number(book.id) % 6),
-                    },
-                  ]}
-                >
-                  <ThemedText style={styles.newBookCoverText}>
-                    {book.title.split(" ")[0]}
-                  </ThemedText>
-                </View>
+                <BookCover
+                  uri={book.coverUrl}
+                  title={book.title}
+                  fallbackColor={book.coverColor}
+                  style={styles.newBookCover}
+                />
                 <ThemedText style={styles.newBookTitle}>
                   {book.title}
                 </ThemedText>
@@ -271,7 +292,7 @@ export default function HomeScreen() {
                     {book.category}
                   </ThemedText>
                   <ThemedText style={styles.newBookRating}>
-                    ⭐ {book.rating}
+                    {book.rating ? `★ ${book.rating}` : ""}
                   </ThemedText>
                 </View>
               </Pressable>
@@ -287,7 +308,7 @@ export default function HomeScreen() {
 
           <View style={styles.hotMetaRow}>
             <ThemedText style={styles.hotMetaText}>
-              Tổng dữ liệu trong 30 ngày
+              Xếp hạng theo lượt đọc, lượt mua và lượt theo dõi
             </ThemedText>
           </View>
 
@@ -303,19 +324,12 @@ export default function HomeScreen() {
                     #{index + 1}
                   </ThemedText>
                 </View>
-                <View
-                  style={[
-                    styles.hotBookCover,
-                    {
-                      backgroundColor:
-                        book.coverColor || getCoverColor(index + 2),
-                    },
-                  ]}
-                >
-                  <ThemedText style={styles.hotBookCoverText}>
-                    {book.title.split(" ")[0]}
-                  </ThemedText>
-                </View>
+                <BookCover
+                  uri={book.coverUrl}
+                  title={book.title}
+                  fallbackColor={book.coverColor || getCoverColor(index + 2)}
+                  style={styles.hotBookCover}
+                />
                 <View style={styles.hotBookInfo}>
                   <ThemedText style={styles.hotBookTitle}>
                     {book.title}
@@ -328,13 +342,13 @@ export default function HomeScreen() {
                   </ThemedText>
                   <View style={styles.hotMetricsRow}>
                     <ThemedText style={styles.hotMetric}>
-                      👁 {formatCompactNumber(book.reads || 0)}
+                      👁 {formatCompactNumber(book.views || 0)}
                     </ThemedText>
                     <ThemedText style={styles.hotMetric}>
                       🛒 {formatCompactNumber(book.purchases || 0)}
                     </ThemedText>
                     <ThemedText style={styles.hotMetric}>
-                      ♥ {formatCompactNumber(book.likes || 0)}
+                      ♥ {formatCompactNumber(book.followers || 0)}
                     </ThemedText>
                   </View>
                 </View>
@@ -428,15 +442,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 100,
     borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
     marginRight: 14,
-  },
-  coverText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#fff",
-    textAlign: "center",
   },
   bookInfo: {
     flex: 1,
@@ -536,14 +542,7 @@ const styles = StyleSheet.create({
   newBookCover: {
     height: 150,
     borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
     marginBottom: 10,
-  },
-  newBookCoverText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
   },
   newBookTitle: {
     fontSize: 14,
@@ -615,14 +614,7 @@ const styles = StyleSheet.create({
     width: 74,
     height: 96,
     borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
     marginRight: 12,
-  },
-  hotBookCoverText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
   },
   hotBookInfo: {
     flex: 1,

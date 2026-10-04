@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { BookCover } from "@/components/book-cover";
 import { createBook, createChapter } from "@/lib/account-api";
 import { getCategories } from "@/lib/discover-api";
 
@@ -67,6 +68,7 @@ export default function PublishScreen() {
     }
 
     setSubmitting(true);
+    let failedStep = "gửi thông tin truyện";
     try {
       const createdBook = await createBook({
         title: title.trim(),
@@ -81,6 +83,7 @@ export default function PublishScreen() {
         throw new Error("Máy chủ không trả về ID truyện sau khi tạo.");
       }
 
+      failedStep = "gửi chương đầu tiên";
       await createChapter(bookId, {
         chapterNumber: 1,
         title: chapterTitle.trim(),
@@ -106,7 +109,9 @@ export default function PublishScreen() {
     } catch (error) {
       Alert.alert(
         "Không thể tạo truyện",
-        error instanceof Error ? error.message : "Máy chủ đang gặp sự cố.",
+        `${failedStep}: ${
+          error instanceof Error ? error.message : "Máy chủ đang gặp sự cố."
+        }`,
       );
     } finally {
       setSubmitting(false);
@@ -150,7 +155,16 @@ export default function PublishScreen() {
             }
           }}
         >
-          <Text>{cover ? "Đã chọn ảnh bìa" : "Chọn ảnh bìa"}</Text>
+          <View style={styles.coverPickerContent}>
+            {cover ? (
+              <BookCover
+                uri={cover.uri}
+                title={title || "Ảnh bìa"}
+                style={styles.coverPreview}
+              />
+            ) : null}
+            <Text>{cover ? "Đã chọn ảnh bìa" : "Chọn ảnh bìa"}</Text>
+          </View>
         </Pressable>
         <Text style={styles.sectionLabel}>Chọn thể loại</Text>
         <View style={styles.categories}>
@@ -250,6 +264,8 @@ export default function PublishScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F6F7FB" },
   content: { padding: 20, gap: 14, backgroundColor: "#F6F7FB", flexGrow: 1 },
+  coverPickerContent: { flexDirection: "row", alignItems: "center", gap: 12 },
+  coverPreview: { width: 52, height: 72, borderRadius: 8 },
   backButton: { alignSelf: "flex-start", marginBottom: 8 },
   backText: { color: "#0F766E", fontSize: 16, fontWeight: "600" },
   title: { color: "#111827", fontSize: 28, fontWeight: "700", marginBottom: 8 },

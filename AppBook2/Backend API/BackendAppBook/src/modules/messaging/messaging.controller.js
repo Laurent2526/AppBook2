@@ -6,6 +6,7 @@ const {
   blockSchema,
   messageIdSchema,
   notificationIdSchema,
+  expoPushTokenSchema,
 } = require("./messaging.schema");
 const service = require("./messaging.service");
 
@@ -114,6 +115,16 @@ async function markNotificationRead(req, res, next) {
   }
 }
 
+async function registerPushToken(req, res, next) {
+  try {
+    const { token } = expoPushTokenSchema.parse(req.body);
+    await service.registerPushToken(req.auth.sub, req.account.sessionId, token);
+    res.json({ success: true, data: { registered: true } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   createConversation,
   listConversations,
@@ -125,4 +136,5 @@ module.exports = {
   listNotifications,
   unreadNotificationCount,
   markNotificationRead,
+  registerPushToken,
 };

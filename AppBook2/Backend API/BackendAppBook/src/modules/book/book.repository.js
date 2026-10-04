@@ -1,19 +1,50 @@
 const db = require("../../config/db");
 
-async function listPublic({ page, limit, search, categoryId, writingStatus }) {
+async function listPublic({
+  page,
+  limit,
+  search,
+  categoryId,
+  writingStatus,
+  sortBy = "latest",
+}) {
   const query = db("v_public_books as books")
-    .select("books.*")
+    .leftJoin("books as source", "source.id", "books.id")
+    .select(
+      "books.*",
+      "source.owner_id as owner_id",
+      "source.total_revenue",
+      db.raw(
+        "(SELECT GROUP_CONCAT(book_categories.category_id) FROM book_categories WHERE book_categories.book_id = books.id) AS category_ids",
+      ),
+    )
     .distinct("books.id")
     .limit(limit)
-    .offset((page - 1) * limit)
-    .orderBy("books.last_chapter_at", "desc");
+    .offset((page - 1) * limit);
+
+  if (sortBy === "hot") {
+    query
+      .orderBy("books.view_count", "desc")
+      .orderBy("books.purchase_count", "desc")
+      .orderBy("books.follower_count", "desc")
+      .orderBy("books.last_chapter_at", "desc");
+  } else {
+    query.orderBy("books.last_chapter_at", "desc");
+  }
 
   if (search) {
     query.where((builder) =>
       builder
         .where("books.title", "like", `%${search}%`)
         .orWhere("books.author_name", "like", `%${search}%`)
-        .orWhere("books.description", "like", `%${search}%`),
+        .orWhere("books.description", "like", `%${search}%`)
+        .orWhereIn("books.id", function categorySearch() {
+          this.select("links.book_id")
+            .from("book_categories as links")
+            .join("categories", "categories.id", "links.category_id")
+            .where({ "categories.is_active": 1 })
+            .where("categories.name", "like", `%${search}%`);
+        }),
     );
   }
   if (writingStatus) query.where("books.writing_status", writingStatus);
@@ -22,7 +53,12 @@ async function listPublic({ page, limit, search, categoryId, writingStatus }) {
       .join("book_categories", "book_categories.book_id", "books.id")
       .where("book_categories.category_id", categoryId);
 
-  const rows = await query;
+  const rows = (await query).map((book) => ({
+    ...book,
+    category_ids: book.category_ids
+      ? String(book.category_ids).split(",").map(Number)
+      : [],
+  }));
   return { rows, page, limit };
 }
 
@@ -79,7 +115,11 @@ async function listMine({ ownerId, page, limit, status, search }) {
 }
 
 async function findPublicById(id) {
-  return db("v_public_books").where({ id }).first();
+  return db("v_public_books as books")
+    .join("books as source", "source.id", "books.id")
+    .select("books.*", "source.owner_id as owner_id", "source.total_revenue")
+    .where("books.id", id)
+    .first();
 }
 
 async function findBookById(trx, id) {

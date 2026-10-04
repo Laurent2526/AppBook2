@@ -19,6 +19,10 @@ const createTopupSchema = z.object({
   paymentMethod: paymentMethodSchema.default("vnpay"),
 });
 
+const demoTopupSchema = z.object({
+  amount: z.enum(["50000", "100000", "200000", "500000", "1000000"]),
+});
+
 const webhookTopupSchema = z
   .object({
     code: z.string().trim().min(1).max(100).optional(),
@@ -35,4 +39,9 @@ const webhookTopupSchema = z
   })
   .passthrough();
 
-module.exports = { createTopupSchema, webhookTopupSchema, paymentMethodSchema };
+module.exports = {
+  createTopupSchema,
+  demoTopupSchema,
+  webhookTopupSchema,
+  paymentMethodSchema,
+};

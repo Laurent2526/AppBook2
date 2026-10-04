@@ -137,5 +137,33 @@ describe("Reports and auto-hide", () => {
       .send({ adminNote: "Đã xử lý tự động" });
     expect(dismissed.status).toBe(200);
     expect(dismissed.body.data.report.status).toBe("dismissed");
+
+    const accountReport = await request(app)
+      .post("/api/reports")
+      .set("Authorization", `Bearer ${reporterTwo.token}`)
+      .send({
+        targetType: "account",
+        targetId: reporterOne.accountId,
+        reason: "harassment",
+        description: "Tài khoản gửi nội dung quấy rối",
+      });
+    expect(accountReport.status).toBe(201);
+
+    const accountResolved = await request(app)
+      .post(
+        `/api/admin/reports/${accountReport.body.data.report.id}/resolve`,
+      )
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ actionTaken: "account_locked", adminNote: "Xác minh vi phạm" });
+    expect(accountResolved.status).toBe(200);
+    expect(accountResolved.body.data.report.action_taken).toBe("account_locked");
+    const lockedAccount = await db("accounts")
+      .where({ id: reporterOne.accountId })
+      .first();
+    expect(lockedAccount.status).toBe("locked");
+    const revokedSessions = await db("user_sessions")
+      .where({ account_id: reporterOne.accountId })
+      .whereNotNull("revoked_at");
+    expect(revokedSessions.length).toBeGreaterThan(0);
   });
 });

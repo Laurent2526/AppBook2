@@ -1,9 +1,10 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,7 +13,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BackHeader } from "@/components/back-header";
-import { getMyBooks, MyBook } from "@/lib/account-api";
+import { BookCover } from "@/components/book-cover";
+import { getMyBooks, MyBook, requestMyBookDeletion } from "@/lib/account-api";
 
 export default function MyBooksScreen() {
   const router = useRouter();
@@ -25,32 +27,32 @@ export default function MyBooksScreen() {
     pendingDelete: 0,
   });
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [busyBookId, setBusyBookId] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let active = true;
-
-    const load = async () => {
-      try {
-        const result = await getMyBooks({ page: 1, limit: 50 });
-        if (!active) return;
-        setBooks(result.rows);
-        setSummary(result.summary);
-      } catch (error) {
-        console.warn("my books fetch failed", error);
-        Alert.alert(
-          "Không tải được truyện của bạn",
-          error instanceof Error ? error.message : "Vui lòng thử lại sau.",
-        );
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      active = false;
-    };
+  const loadBooks = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const result = await getMyBooks({ page: 1, limit: 50 });
+      setBooks(result.rows);
+      setSummary(result.summary);
+    } catch (error) {
+      console.warn("my books fetch failed", error);
+      Alert.alert(
+        "Không tải được truyện của bạn",
+        error instanceof Error ? error.message : "Vui lòng thử lại sau.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadBooks();
+    }, [loadBooks]),
+  );
 
   const openAddChapter = (bookId: string, bookTitle: string) => {
     router.push({
@@ -59,9 +61,56 @@ export default function MyBooksScreen() {
     });
   };
 
+  const requestDeletion = (book: MyBook) => {
+    Alert.alert(
+      "Gửi yêu cầu xóa truyện?",
+      "Truyện sẽ tạm ẩn khỏi danh sách công khai và chỉ bị xóa sau khi quản trị viên duyệt.",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Gửi yêu cầu",
+          style: "destructive",
+          onPress: () => {
+            setBusyBookId(book.id);
+            void requestMyBookDeletion(book.id, "Người đăng yêu cầu xóa truyện")
+              .then(() => {
+                setBooks((current) =>
+                  current.map((entry) =>
+                    entry.id === book.id
+                      ? { ...entry, status: "pending_delete" }
+                      : entry,
+                  ),
+                );
+                setSummary((current) => ({
+                  ...current,
+                  pendingDelete: current.pendingDelete + 1,
+                }));
+                Alert.alert(
+                  "Đã gửi",
+                  "Yêu cầu xóa đang chờ quản trị viên duyệt.",
+                );
+              })
+              .catch((error) =>
+                Alert.alert(
+                  "Không thể gửi yêu cầu",
+                  error instanceof Error ? error.message : "Vui lòng thử lại.",
+                ),
+              )
+              .finally(() => setBusyBookId(null));
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={loadBooks} />
+        }
+      >
         <BackHeader title="Quản lý truyện" />
 
         <View style={styles.summaryRow}>
@@ -112,11 +161,12 @@ export default function MyBooksScreen() {
           </View>
         ) : (
           books.map((book) => (
-            <Pressable
-              key={book.id}
-              style={styles.bookCard}
-              onPress={() => openAddChapter(book.id, book.title)}
-            >
+            <View key={book.id} style={styles.bookCard}>
+              <BookCover
+                uri={book.cover_url}
+                title={book.title}
+                style={styles.bookCover}
+              />
               <View style={styles.bookLeft}>
                 <Text style={styles.bookTitle}>{book.title}</Text>
                 <Text style={styles.bookMeta}>
@@ -125,12 +175,64 @@ export default function MyBooksScreen() {
                     : book.status === "pending"
                       ? "Đang chờ duyệt"
                       : book.status === "rejected"
-                        ? "Bị từ chối"
-                        : book.status || "Chưa rõ trạng thái"}
+                        ? `Bị từ chối${book.reject_reason ? `: ${book.reject_reason}` : ""}`
+                        : book.status === "pending_delete"
+                          ? "Yêu cầu xóa đang chờ duyệt"
+                          : book.status || "Chưa rõ trạng thái"}
+                </Text>
+                <Text style={styles.bookStats}>
+                  {Number(book.view_count || 0).toLocaleString("vi-VN")} lượt
+                  đọc ·{" "}
+                  {Number(book.purchase_count || 0).toLocaleString("vi-VN")}{" "}
+                  lượt bán ·{" "}
+                  {Number(book.total_revenue || 0).toLocaleString("vi-VN")} đ
                 </Text>
               </View>
-              <Text style={styles.bookAction}>+ Chương</Text>
-            </Pressable>
+              <View style={styles.bookActions}>
+                {book.status !== "pending_delete" &&
+                book.status !== "deleted" ? (
+                  <>
+                    <Pressable
+                      style={styles.smallAction}
+                      onPress={() => openAddChapter(book.id, book.title)}
+                    >
+                      <Text style={styles.smallActionText}>+ Chương</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.smallAction}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(user)/account/edit-book",
+                          params: { bookId: book.id },
+                        })
+                      }
+                    >
+                      <Text style={styles.smallActionText}>Sửa</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.smallAction}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(user)/account/book-statistics",
+                          params: { bookId: book.id },
+                        })
+                      }
+                    >
+                      <Text style={styles.smallActionText}>Thống kê</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.smallAction, styles.deleteAction]}
+                      disabled={busyBookId === book.id}
+                      onPress={() => requestDeletion(book)}
+                    >
+                      <Text style={styles.deleteActionText}>
+                        {busyBookId === book.id ? "Đang gửi..." : "Yêu cầu xóa"}
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : null}
+              </View>
+            </View>
           ))
         )}
       </ScrollView>
@@ -205,7 +307,24 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   bookLeft: { flex: 1, marginRight: 12 },
+  bookCover: { width: 58, height: 80, borderRadius: 10, marginRight: 12 },
   bookTitle: { color: "#111827", fontSize: 16, fontWeight: "700" },
   bookMeta: { color: "#6B7280", marginTop: 6 },
   bookAction: { color: "#0F766E", fontWeight: "700" },
+  bookStats: { color: "#0F766E", fontSize: 12, marginTop: 7 },
+  bookActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    marginTop: 12,
+  },
+  smallAction: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#E8F5F2",
+  },
+  smallActionText: { color: "#0F766E", fontSize: 12, fontWeight: "700" },
+  deleteAction: { backgroundColor: "#FFF0EE" },
+  deleteActionText: { color: "#B44D4D", fontSize: 12, fontWeight: "700" },
 });

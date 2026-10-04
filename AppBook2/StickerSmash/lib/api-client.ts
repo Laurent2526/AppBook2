@@ -8,16 +8,22 @@ const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 const requestTimeoutMs = 10000;
+const uploadTimeoutMs = 180000;
 
 export function resolveApiUrl(path: string | null | undefined) {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path)) return path;
-  return `${apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  if (!apiBaseUrl) return undefined;
+  return new URL(path.startsWith("/") ? path : `/${path}`, apiBaseUrl).toString();
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit) {
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs = requestTimeoutMs,
+) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(url, { ...options, signal: controller.signal });
@@ -37,6 +43,14 @@ export function setAuthTokens(tokens: {
 export function clearAuthTokens() {
   accessToken = null;
   refreshToken = null;
+}
+
+export function getAccessToken() {
+  return accessToken;
+}
+
+export function getApiBaseUrl() {
+  return apiBaseUrl;
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -66,25 +80,33 @@ export async function request<T>(path: string, options: RequestInit = {}) {
     throw new Error("Chưa cấu hình EXPO_PUBLIC_API_URL cho ứng dụng.");
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
+  if ((options.method ?? "GET").toUpperCase() === "GET") {
+    headers.set("Cache-Control", "no-cache");
+  }
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
 
   let response: Response;
+  const method = options.method ?? "GET";
+  const isUpload =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   try {
     response = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
       ...options,
       headers,
-    });
+    }, isUpload ? uploadTimeoutMs : requestTimeoutMs);
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
-        "Không thể kết nối tới máy chủ. Kiểm tra backend, Wi-Fi và địa chỉ API.",
+        `Yêu cầu ${method} ${path} tới ${apiBaseUrl} vượt quá thời gian chờ. Kiểm tra kết nối mạng, backend và thử lại.`,
       );
     }
+    const reason =
+      error instanceof Error ? error.message : String(error);
     throw new Error(
-      "Mất kết nối tới máy chủ. Hãy kiểm tra iPhone và máy tính cùng Wi-Fi.",
+      `Không gửi được yêu cầu ${method} ${path} tới ${apiBaseUrl}. Lỗi kết nối: ${reason}`,
     );
   }
 

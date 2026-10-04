@@ -1,16 +1,24 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
+  AppState,
   Alert,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
 import { useAuth } from "@/components/auth-provider";
-import { createBookmark, updateReadingHistory } from "@/lib/account-api";
+import {
+  createBookmark,
+  purchaseChapter,
+  updateReadingHistory,
+} from "@/lib/account-api";
 import {
   getBookById,
   getBookChapters,
@@ -20,14 +28,25 @@ import {
 export default function ReaderScreen() {
   const router = useRouter();
   const { isAuthenticated, recordReading } = useAuth();
-  const { bookId, chapter, chapterId } = useLocalSearchParams<{
+  const { bookId, chapter, chapterId, scrollPosition } = useLocalSearchParams<{
     bookId?: string;
     chapter?: string;
     chapterId?: string;
+    scrollPosition?: string;
   }>();
   const [book, setBook] = React.useState<any>(null);
   const [chapterData, setChapterData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
+  const [purchasing, setPurchasing] = React.useState(false);
+  const scrollRef = React.useRef<ScrollView>(null);
+  const scrollPositionRef = React.useRef(0);
+  const contentHeightRef = React.useRef(0);
+  const viewportHeightRef = React.useRef(0);
+  const restorePositionRef = React.useRef<number | null>(null);
+  const restoredChapterRef = React.useRef<string | null>(null);
+  const saveProgressTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -75,39 +94,205 @@ export default function ReaderScreen() {
     };
   }, [bookId, chapter, chapterId]);
 
-  React.useEffect(() => {
-    if (bookId && chapter) {
-      recordReading({
-        id: `${bookId}-${chapter}`,
-        title: book?.title || bookId,
-        chapter: `Chương ${chapter}`,
-        color: "#F59E0B",
-      });
-
-      if (isAuthenticated) {
-        updateReadingHistory(String(bookId), {
-          lastChapterId: chapterId,
-          chaptersRead: Number(chapter),
-          progressPercent: "0.00",
-        }).catch((error) =>
-          console.warn("reading history update failed", error),
-        );
-      }
-    }
-  }, [bookId, chapter, chapterId, book, isAuthenticated, recordReading]);
+  const activeChapterData =
+    chapterData &&
+    (!chapterId || String(chapterData.id) === String(chapterId)) &&
+    (!bookId ||
+      !chapterData.book_id ||
+      String(chapterData.book_id) === String(bookId))
+      ? chapterData
+      : null;
 
   const requiresPurchase = Boolean(
-    chapterData && Number(chapterData.is_free) === 0 && !chapterData.content,
+    activeChapterData &&
+      (activeChapterData.requiresPurchase ||
+        (Number(activeChapterData.is_free) === 0 &&
+          !activeChapterData.content)),
   );
 
-  const contentTitle = chapterData?.title || "Chương";
-  const contentBody =
-    chapterData?.content || "Nội dung chương đang được tải từ máy chủ.";
+  const contentTitle = activeChapterData?.title || "Chương";
+  const contentBody = activeChapterData?.content
+    ? String(activeChapterData.content)
+        .replace(/\r\n?/g, "\n")
+        .split(/\n\s*\n/)
+        .map((paragraph: string) =>
+          paragraph.replace(/[ \t]*\n[ \t]*/g, " ").trim(),
+        )
+        .join("\n\n")
+    : "Nội dung chương đang được tải từ máy chủ.";
+  const currentChapterId = activeChapterData?.id;
+  const currentChapterNumber = activeChapterData?.chapter_number;
+  const currentChapterKey =
+    bookId && currentChapterId
+      ? `${bookId}:${currentChapterId}:${scrollPosition ?? "0"}`
+      : null;
 
-  if (requiresPurchase && !isAuthenticated) {
+  const persistReadingProgress = React.useCallback(
+    async (position: number) => {
+      if (!isAuthenticated || !bookId || !currentChapterId) return;
+      const maxScroll = Math.max(
+        contentHeightRef.current - viewportHeightRef.current,
+        0,
+      );
+      const progress =
+        maxScroll > 0
+          ? Math.min(100, Math.max(0, (position / maxScroll) * 100))
+          : 0;
+      try {
+        await updateReadingHistory(String(bookId), {
+          lastChapterId: String(currentChapterId),
+          chaptersRead: Number(
+            chapter ?? currentChapterNumber ?? 0,
+          ),
+          progressPercent: progress.toFixed(2),
+          scrollPosition: Math.round(position),
+        });
+      } catch (error) {
+        console.warn("reading progress save failed", error);
+      }
+    },
+    [bookId, chapter, currentChapterId, currentChapterNumber, isAuthenticated],
+  );
+
+  React.useEffect(() => {
+    if (!bookId || !activeChapterData?.id) return;
+    const chapterNumber = String(
+      chapter ?? activeChapterData.chapter_number ?? "1",
+    );
+    recordReading({
+      id: `${bookId}-${chapterNumber}`,
+      title: book?.title || String(bookId),
+      chapter: `Chương ${chapterNumber}`,
+      color: "#F59E0B",
+    });
+  }, [
+    book?.title,
+    bookId,
+    chapter,
+    activeChapterData?.chapter_number,
+    activeChapterData?.id,
+    recordReading,
+  ]);
+
+  React.useEffect(() => {
+    if (!currentChapterKey) return;
+    const initialPosition = Math.max(0, Number(scrollPosition) || 0);
+    scrollPositionRef.current = initialPosition;
+    restorePositionRef.current = initialPosition;
+    restoredChapterRef.current = null;
+    void persistReadingProgress(initialPosition);
+  }, [
+    currentChapterKey,
+    persistReadingProgress,
+    scrollPosition,
+  ]);
+
+  const handleReaderScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const position = event.nativeEvent.contentOffset.y;
+      scrollPositionRef.current = position;
+      if (!isAuthenticated || !bookId || !activeChapterData?.id) return;
+      if (saveProgressTimerRef.current) {
+        clearTimeout(saveProgressTimerRef.current);
+      }
+      saveProgressTimerRef.current = setTimeout(() => {
+        void persistReadingProgress(scrollPositionRef.current);
+        saveProgressTimerRef.current = null;
+      }, 1500);
+    },
+    [activeChapterData?.id, bookId, isAuthenticated, persistReadingProgress],
+  );
+
+  const restoreReadingPosition = React.useCallback(() => {
+    const chapterKey = String(activeChapterData?.id ?? "");
+    const position = restorePositionRef.current;
+    if (
+      !chapterKey ||
+      position === null ||
+      restoredChapterRef.current === chapterKey ||
+      loading
+    ) {
+      return;
+    }
+    restoredChapterRef.current = chapterKey;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: position, animated: false });
+    });
+  }, [activeChapterData?.id, loading]);
+
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        if (saveProgressTimerRef.current) {
+          clearTimeout(saveProgressTimerRef.current);
+          saveProgressTimerRef.current = null;
+        }
+        void persistReadingProgress(scrollPositionRef.current);
+      }
+    });
+    return () => {
+      subscription.remove();
+      if (saveProgressTimerRef.current) {
+        clearTimeout(saveProgressTimerRef.current);
+        saveProgressTimerRef.current = null;
+        void persistReadingProgress(scrollPositionRef.current);
+      }
+    };
+  }, [persistReadingProgress]);
+
+  const handlePurchase = async () => {
+    if (!isAuthenticated) {
+      router.push("/auth");
+      return;
+    }
+
+    const id = String(activeChapterData?.id || chapterId || "");
+    if (!id || purchasing) return;
+
+    setPurchasing(true);
+    try {
+      await purchaseChapter(id);
+      const { chapter: purchasedChapter } = await getChapterById(id);
+      setChapterData(purchasedChapter);
+      Alert.alert(
+        "Mua thành công",
+        "Chương đã được mở khóa trong tài khoản của bạn.",
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Không thể mua chương.";
+      if (message.toLowerCase().includes("số dư ví không đủ")) {
+        Alert.alert("Số dư không đủ", "Nạp thêm tiền để mua và tiếp tục đọc.", [
+          { text: "Để sau", style: "cancel" },
+          {
+            text: "Nạp tiền",
+            onPress: () => router.push("/(user)/account/wallet"),
+          },
+        ]);
+      } else {
+        Alert.alert("Không thể mua chương", message);
+      }
+    } finally {
+      setPurchasing(false);
+    }
+  };
+
+  if (requiresPurchase) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.content}
+          onScroll={handleReaderScroll}
+          scrollEventThrottle={500}
+          onLayout={(event) => {
+            viewportHeightRef.current = event.nativeEvent.layout.height;
+          }}
+          onContentSizeChange={(_, height) => {
+            contentHeightRef.current = height;
+            restoreReadingPosition();
+          }}
+        >
           <View style={styles.header}>
             <Pressable onPress={() => router.back()}>
               <Text style={styles.back}>‹</Text>
@@ -117,32 +302,58 @@ export default function ReaderScreen() {
           </View>
 
           <View style={styles.lockCard}>
-            <Text style={styles.lockTitle}>Chương có phí</Text>
+            <Text style={styles.lockTitle}>Chương trả phí</Text>
             <Text style={styles.lockBody}>
-              Bạn cần đăng nhập để tiếp tục đọc nội dung trả phí. Tài khoản còn
-              dùng để lưu truyện, bình luận, đánh giá và mua chương.
+              {activeChapterData?.preview_text ||
+                "Mua chương bằng số dư ví để đọc toàn bộ nội dung. Quyền đọc được cấp sau khi thanh toán thành công."}
+            </Text>
+            <Text style={styles.price}>
+              Giá:{" "}
+              {Number(activeChapterData?.price || 0).toLocaleString("vi-VN")} đ
             </Text>
             <Pressable
-              style={styles.primaryButton}
-              onPress={() => router.push("/auth")}
+              style={[
+                styles.primaryButton,
+                purchasing && styles.disabledButton,
+              ]}
+              onPress={() => void handlePurchase()}
+              disabled={purchasing}
             >
-              <Text style={styles.primaryButtonText}>Đăng nhập để đọc</Text>
+              <Text style={styles.primaryButtonText}>
+                {purchasing
+                  ? "Đang xử lý..."
+                  : isAuthenticated
+                    ? "Mua chương bằng ví"
+                    : "Đăng nhập để mua"}
+              </Text>
             </Pressable>
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        onScroll={handleReaderScroll}
+        scrollEventThrottle={500}
+        onLayout={(event) => {
+          viewportHeightRef.current = event.nativeEvent.layout.height;
+        }}
+        onContentSizeChange={(_, height) => {
+          contentHeightRef.current = height;
+          restoreReadingPosition();
+        }}
+      >
         <View style={styles.header}>
           <Pressable onPress={() => router.back()}>
             <Text style={styles.back}>‹</Text>
           </Pressable>
           <Text style={styles.chapter}>
-            Chương {chapter ?? chapterData?.chapter_number ?? "1"}
+            Chương {chapter ?? activeChapterData?.chapter_number ?? "1"}
           </Text>
           <View style={styles.spacer} />
         </View>
@@ -183,14 +394,14 @@ export default function ReaderScreen() {
         >
           <Text style={styles.secondaryButtonText}>Lưu truyện</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFCF5" },
-  content: { flex: 1, padding: 24 },
+  content: { flexGrow: 1, padding: 24 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -206,7 +417,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  body: { marginTop: 16, color: "#374151", fontSize: 18, lineHeight: 32 },
+  body: {
+    marginTop: 16,
+    color: "#374151",
+    fontSize: 18,
+    lineHeight: 32,
+  },
   lockCard: {
     marginTop: 42,
     backgroundColor: "#FFFFFF",
@@ -229,6 +445,12 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 18,
   },
+  price: {
+    color: "#111827",
+    fontSize: 17,
+    fontWeight: "700",
+    marginBottom: 16,
+  },
   primaryButton: {
     backgroundColor: "#4F46E5",
     borderRadius: 14,
@@ -236,6 +458,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  disabledButton: { opacity: 0.6 },
   secondaryButton: {
     marginTop: 24,
     backgroundColor: "#ECFDF5",

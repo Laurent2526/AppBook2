@@ -1,18 +1,18 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    ActivityIndicator,
-    PanResponder,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import { DiscoverBook, DiscoverGenre } from "@/lib/discover-api";
+import { BookCover } from "@/components/book-cover";
 
 type Props = {
   books: DiscoverBook[];
@@ -32,20 +32,12 @@ function Cover({
   book: DiscoverBook;
   large?: boolean;
 }) {
-  return book.coverUrl ? (
-    <Image
-      source={book.coverUrl}
+  return (
+    <BookCover
+      uri={book.coverUrl}
+      title={book.title}
       style={large ? styles.largeCover : styles.cover}
-      contentFit="cover"
     />
-  ) : (
-    <View
-      style={[large ? styles.largeCover : styles.cover, styles.coverFallback]}
-    >
-      <Text style={styles.coverInitials}>
-        {book.title.slice(0, 2).toUpperCase()}
-      </Text>
-    </View>
   );
 }
 
@@ -124,49 +116,6 @@ export function RecommendationsFeed({
     },
   });
 
-  if (showGenrePicker) {
-    return (
-      <View>
-        <Text style={styles.title}>Bạn quan tâm tới thể loại nào?</Text>
-        <Text style={styles.subtitle}>
-          Chọn ít nhất một thể loại để nhận gợi ý phù hợp.
-        </Text>
-        <View style={styles.genreGrid}>
-          {genres.map((genre) => {
-            const selected = selectedGenres.includes(genre.id);
-            return (
-              <Pressable
-                key={genre.id}
-                onPress={() => onToggleGenre(genre.id)}
-                style={[styles.genreChip, selected && styles.genreChipSelected]}
-              >
-                <Text
-                  style={[
-                    styles.genreText,
-                    selected && styles.genreTextSelected,
-                  ]}
-                >
-                  {genre.name}
-                </Text>
-                {selected && (
-                  <MaterialIcons name="check" size={16} color="#FFFFFF" />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-        {selectedGenres.length === 0 && (
-          <Text style={styles.validation}>
-            Vui lòng chọn ít nhất một thể loại.
-          </Text>
-        )}
-        <Text style={styles.hint}>
-          Các gợi ý sẽ được cập nhật theo lựa chọn và dữ liệu truyện mới.
-        </Text>
-      </View>
-    );
-  }
-
   if (loading)
     return (
       <View style={styles.state}>
@@ -186,6 +135,47 @@ export function RecommendationsFeed({
 
   return (
     <View>
+      {showGenrePicker ? (
+        <View style={styles.genreSection}>
+          <Text style={styles.genreLabel}>Lọc thêm theo thể loại</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.genreGrid}
+          >
+            {genres.map((genre) => {
+              const selected = selectedGenres.includes(genre.id);
+              return (
+                <Pressable
+                  key={genre.id}
+                  onPress={() => onToggleGenre(genre.id)}
+                  style={[
+                    styles.genreChip,
+                    selected && styles.genreChipSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.genreText,
+                      selected && styles.genreTextSelected,
+                    ]}
+                  >
+                    {genre.name}
+                  </Text>
+                  {selected && (
+                    <MaterialIcons name="check" size={16} color="#FFFFFF" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <Text style={styles.hint}>
+            {selectedGenres.length
+              ? "Đang lọc theo thể loại đã chọn."
+              : "Gợi ý dựa trên lịch sử đọc của bạn."}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.headingRow}>
         <Text style={styles.title}>Gợi ý dành riêng cho bạn</Text>
         <Pressable accessibilityLabel="Tải thêm đề xuất" onPress={onRefresh}>
@@ -262,7 +252,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  genreGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  genreSection: { marginBottom: 20 },
+  genreLabel: {
+    color: "#496360",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  genreGrid: { flexDirection: "row", gap: 10 },
   genreChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -304,18 +301,6 @@ const styles = StyleSheet.create({
   readMore: { color: "#168A83", fontWeight: "800", marginTop: 12 },
   cover: { width: 92, height: 138, borderRadius: 10 },
   largeCover: { width: 76, height: 108, borderRadius: 10 },
-  coverFallback: {
-    backgroundColor: "#79B8AF",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 8,
-  },
-  coverInitials: {
-    color: "#FFF",
-    fontSize: 22,
-    fontWeight: "800",
-    textAlign: "center",
-  },
   arc: { gap: 14, paddingVertical: 4, paddingHorizontal: 6, marginBottom: 28 },
   arcItem: { width: 96, alignItems: "center" },
   arcCircle: {

@@ -46,7 +46,7 @@ const swaggerOptions = {
       description:
         "Backend API for APPBOOK mobile application and admin portal",
     },
-    servers: [{ url: "http://localhost:3000", description: "Local server" }],
+    servers: [{ url: "/", description: "Current server" }],
     tags: [
       { name: "System", description: "Health check and API metadata" },
       { name: "Authentication", description: "Registration, OTP and sessions" },

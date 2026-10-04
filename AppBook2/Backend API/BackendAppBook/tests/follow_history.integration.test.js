@@ -108,6 +108,12 @@ describe("Follow and reading history", () => {
     expect(
       history.body.data.items.some((item) => item.book_id === bookId),
     ).toBe(true);
+    const savedHistory = history.body.data.items.find(
+      (item) => item.book_id === bookId,
+    );
+    expect(savedHistory.last_chapter_id).toBe(chapterId);
+    expect(Number(savedHistory.progress_percent)).toBe(42.5);
+    expect(savedHistory.scroll_position).toBe(1200);
 
     const unfollow = await request(app)
       .delete(`/api/follows/book/${bookId}`)

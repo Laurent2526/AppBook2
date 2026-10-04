@@ -87,6 +87,18 @@ describe("Ratings and comments", () => {
     expect(aggregate.rating_count).toBe(1);
     expect(Number(aggregate.rating_avg)).toBe(5);
 
+    const myRatings = await request(app)
+      .get("/api/me/ratings")
+      .set("Authorization", `Bearer ${reader.token}`);
+    expect(myRatings.status).toBe(200);
+    expect(myRatings.body.data.items).toContainEqual(
+      expect.objectContaining({
+        book_id: bookId,
+        book_title: expect.any(String),
+        score: 5,
+      }),
+    );
+
     const comment = await request(app)
       .post(`/api/books/${bookId}/comments`)
       .set("Authorization", `Bearer ${reader.token}`)
@@ -99,6 +111,10 @@ describe("Ratings and comments", () => {
     expect(comments.body.data.items.some((item) => item.id === commentId)).toBe(
       true,
     );
+    expect(
+      comments.body.data.items[0].account_name ||
+        comments.body.data.items[0].account_username,
+    ).toBeTruthy();
 
     const forbiddenPatch = await request(app)
       .patch(`/api/comments/${commentId}`)

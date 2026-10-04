@@ -69,6 +69,27 @@ async function listMine(req, res, next) {
   }
 }
 
+async function getMine(req, res, next) {
+  try {
+    const book = await service.getMine(req.auth.sub, req.params.id);
+    res.json({ success: true, data: { book } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getMineStatistics(req, res, next) {
+  try {
+    const statistics = await service.getMineStatistics(
+      req.auth.sub,
+      req.params.id,
+    );
+    res.json({ success: true, data: { statistics } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getChapter(req, res, next) {
   try {
     const chapter = await service.getChapter(req.params.id, req.auth?.sub);
@@ -152,6 +173,8 @@ async function requestDelete(req, res, next) {
 module.exports = {
   list,
   listMine,
+  getMine,
+  getMineStatistics,
   get,
   chapters,
   getChapter,

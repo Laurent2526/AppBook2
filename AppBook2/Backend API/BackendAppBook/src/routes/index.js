@@ -18,12 +18,16 @@ const interactionRoutes = require("../modules/interaction/interaction.routes");
 const reportRoutes = require("../modules/report/report.routes");
 const messagingRoutes = require("../modules/messaging/messaging.routes");
 const statisticsRoutes = require("../modules/statistics/statistics.routes");
+const adminRoutes = require("../modules/admin/admin.routes");
+const discoveryRoutes = require("../modules/discovery/discovery.routes");
 
 router.use("/auth", authRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/books", bookRoutes);
 router.use("/chapters", chapterRoutes);
 router.use("/admin/moderation", moderationRoutes);
+router.use("/admin", adminRoutes);
+router.use("/discovery", discoveryRoutes);
 router.use("/topups", topupRoutes);
 router.use(refundRoutes);
 router.use(followRoutes);
@@ -54,6 +58,16 @@ router.get("/me/books", authenticate, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+router.get("/me/books/:id/statistics", authenticate, (req, res, next) => {
+  const bookController = require("../modules/book/book.controller");
+  bookController.getMineStatistics(req, res, next);
+});
+
+router.get("/me/books/:id", authenticate, (req, res, next) => {
+  const bookController = require("../modules/book/book.controller");
+  bookController.getMine(req, res, next);
 });
 
 router.get("/health", async (req, res, next) => {

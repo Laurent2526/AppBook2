@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { BookCover } from "@/components/book-cover";
 import { DiscoverBook, FollowingUser } from "@/lib/discover-api";
 
 function BookLink({
@@ -30,11 +31,11 @@ function BookList({ books }: { books: DiscoverBook[] }) {
       {books.map((book) => (
         <BookLink book={book} key={book.id}>
           <View style={styles.bookRow}>
-            <View style={styles.cover}>
-              <Text style={styles.coverText}>
-                {book.title.slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
+            <BookCover
+              uri={book.coverUrl}
+              title={book.title}
+              style={styles.cover}
+            />
             <View style={styles.bookCopy}>
               <Text style={styles.bookTitle} numberOfLines={2}>
                 {book.title}
@@ -53,9 +54,11 @@ function BookList({ books }: { books: DiscoverBook[] }) {
 
 export function FollowingFeed({
   users,
+  books,
   saved,
 }: {
   users: FollowingUser[];
+  books: DiscoverBook[];
   saved: DiscoverBook[];
 }) {
   return (
@@ -85,8 +88,14 @@ export function FollowingFeed({
         ))
       )}
       <Text style={[styles.title, styles.savedTitle]}>
-        Truyện đã lưu và tủ truyện
+        Truyện đang theo dõi
       </Text>
+      {books.length === 0 ? (
+        <Text style={styles.empty}>Bạn chưa theo dõi truyện nào.</Text>
+      ) : (
+        <BookList books={books} />
+      )}
+      <Text style={[styles.title, styles.savedTitle]}>Tủ truyện đã lưu</Text>
       {saved.length === 0 ? (
         <Text style={styles.empty}>Tủ truyện của bạn đang trống.</Text>
       ) : (
@@ -135,15 +144,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     elevation: 1,
   },
-  cover: {
-    width: 62,
-    height: 86,
-    borderRadius: 10,
-    backgroundColor: "#79B8AF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  coverText: { color: "#FFF", fontSize: 18, fontWeight: "800" },
+  cover: { width: 62, height: 86, borderRadius: 10 },
   bookCopy: { flex: 1, paddingHorizontal: 12 },
   bookTitle: { color: "#263B3A", fontWeight: "800", fontSize: 16 },
   bookMeta: { color: "#647674", fontSize: 12, lineHeight: 17, marginTop: 5 },

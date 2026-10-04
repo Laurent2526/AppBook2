@@ -4,12 +4,47 @@ const repository = require("./book.repository");
 const moderationRepository = require("../moderation/moderation.repository");
 const db = require("../../config/db");
 
+function getSafePaidChapterPreview(chapter) {
+  const preview = String(chapter.preview_text || "").trim();
+  const content = String(chapter.content || "").trim();
+  if (!preview || !content) return null;
+
+  const normalize = (value) => value.replace(/\s+/g, " ");
+  const normalizedPreview = normalize(preview);
+  const normalizedContent = normalize(content);
+  return normalizedPreview.length < normalizedContent.length &&
+    !normalizedPreview.includes(normalizedContent)
+    ? chapter.preview_text
+    : null;
+}
+
 async function listPublic(input) {
   return repository.listPublic(input);
 }
 
 async function listMine(ownerId, input) {
   return repository.listMine({ ownerId, ...input });
+}
+
+async function getMine(ownerId, bookId) {
+  const book = await repository.findBookById(db, bookId);
+  if (!book || String(book.owner_id) !== String(ownerId) || book.deleted_at) {
+    throw new ApiError(404, "BOOK_NOT_FOUND", "Không tìm thấy truyện của bạn");
+  }
+  return book;
+}
+
+async function getMineStatistics(ownerId, bookId) {
+  const book = await getMine(ownerId, bookId);
+  return {
+    bookId: book.id,
+    title: book.title,
+    status: book.status,
+    views: Number(book.view_count || 0),
+    purchases: Number(book.purchase_count || 0),
+    revenue: String(book.total_revenue || "0.00"),
+    followers: Number(book.follower_count || 0),
+  };
 }
 
 async function getPublic(id) {
@@ -312,21 +347,39 @@ async function requestDelete(ownerId, targetType, targetId, reason) {
 
 async function getChapter(id, accountId) {
   const chapter = await repository.findChapter(id);
-  if (!chapter || chapter.status !== "published")
+  if (!chapter || chapter.deleted_at || chapter.status === "deleted")
     throw new ApiError(
       404,
       "CHAPTER_NOT_FOUND",
       "Không tìm thấy chương công khai",
     );
+  const book = await repository.findBookById(db, chapter.book_id);
+  const isOwner = Boolean(
+    accountId && book && String(book.owner_id) === String(accountId),
+  );
+  const isFree = Number(chapter.is_free) === 1;
+  const purchase = accountId
+    ? await repository.findActivePurchase(accountId, id)
+    : null;
   if (
-    chapter.is_free ||
-    (accountId && (await repository.findActivePurchase(accountId, id)))
-  )
-    return chapter;
+    !book ||
+    book.deleted_at ||
+    book.status === "deleted" ||
+    (!isOwner &&
+      (chapter.status !== "published" || book.status !== "published"))
+  ) {
+    throw new ApiError(
+      404,
+      "CHAPTER_NOT_FOUND",
+      "Không tìm thấy chương công khai",
+    );
+  }
+  if (isOwner || isFree || purchase) return chapter;
   return {
     ...chapter,
     content: null,
     content_url: null,
+    preview_text: getSafePaidChapterPreview(chapter),
     requiresPurchase: true,
   };
 }
@@ -334,6 +387,8 @@ async function getChapter(id, accountId) {
 module.exports = {
   listPublic,
   listMine,
+  getMine,
+  getMineStatistics,
   getPublic,
   listChapters,
   createBook,

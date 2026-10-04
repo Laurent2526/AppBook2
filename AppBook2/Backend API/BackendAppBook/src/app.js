@@ -15,7 +15,42 @@ const errorHandler = require("./middlewares/errorHandler");
 
 const app = express();
 
-app.use(pinoHttp());
+app.use(
+  pinoHttp({
+    transport:
+      env.NODE_ENV === "development"
+        ? {
+            target: "pino-pretty",
+            options: {
+              colorize: true,
+              translateTime: "SYS:standard",
+              singleLine: true,
+              ignore: "pid,hostname,req,res,responseTime",
+              messageFormat:
+                "{req.method} {req.url} {res.statusCode} {responseTime}ms",
+            },
+          }
+        : undefined,
+    customLogLevel(_req, res, error) {
+      if (error || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url,
+          remoteAddress: req.remoteAddress,
+        };
+      },
+      res(res) {
+        return { statusCode: res.statusCode };
+      },
+    },
+  }),
+);
 app.use(helmet());
 app.use(cors({ origin: env.corsOrigins, credentials: true }));
 app.use(express.json({ limit: "1mb" }));

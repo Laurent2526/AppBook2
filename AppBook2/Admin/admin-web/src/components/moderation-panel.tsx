@@ -7,6 +7,7 @@ import {
   listModerationRequests,
   ModerationRequest,
 } from "@/services/moderation-api";
+import { useAdminToken } from "@/hooks/use-admin-token";
 
 const labels: Record<string, string> = {
   book_publish: "Đăng truyện mới",
@@ -28,7 +29,7 @@ function requestTitle(item: ModerationRequest) {
 }
 
 export function ModerationPanel() {
-  const [token, setToken] = useState("");
+  const [token, setToken] = useAdminToken();
   const [items, setItems] = useState<ModerationRequest[]>([]);
   const [filter, setFilter] = useState<"all" | "chapter" | "book">("all");
   const [note, setNote] = useState<Record<number, string>>({});
@@ -56,11 +57,6 @@ export function ModerationPanel() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    const savedToken = window.localStorage.getItem("appbook_admin_token");
-    if (savedToken) setToken(savedToken);
-  }, []);
 
   const decide = async (
     item: ModerationRequest,
@@ -115,13 +111,7 @@ export function ModerationPanel() {
           type="password"
           placeholder="Admin access token"
           value={token}
-          onChange={(event) => {
-            setToken(event.target.value);
-            window.localStorage.setItem(
-              "appbook_admin_token",
-              event.target.value,
-            );
-          }}
+          onChange={(event) => setToken(event.target.value)}
         />
         <button
           className="primary-action"

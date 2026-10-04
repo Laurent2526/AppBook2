@@ -6,13 +6,45 @@ async function createRequest(trx, data) {
 }
 
 async function listQueue({ page, limit }) {
-  const query = db("v_moderation_queue")
-    .select("*")
+  const query = db("v_moderation_queue as queue")
+    .leftJoin("books as target_book", function joinBookTarget() {
+      this.on("target_book.id", "=", "queue.target_id").andOnVal(
+        "queue.target_type",
+        "=",
+        "book",
+      );
+    })
+    .leftJoin("chapters as target_chapter", function joinChapterTarget() {
+      this.on("target_chapter.id", "=", "queue.target_id").andOnVal(
+        "queue.target_type",
+        "=",
+        "chapter",
+      );
+    })
+    .leftJoin(
+      "books as chapter_book",
+      "chapter_book.id",
+      "target_chapter.book_id",
+    )
+    .select(
+      "queue.*",
+      "target_book.title as title",
+      db.raw(
+        "COALESCE(??, ??) as book_title",
+        ["target_book.title", "chapter_book.title"],
+      ),
+      "target_chapter.chapter_number as chapter_number",
+      "target_chapter.title as chapter_title",
+      db.raw(
+        "COALESCE(??, ??) as author_name",
+        ["target_book.author_name", "chapter_book.author_name"],
+      ),
+    )
     .limit(limit)
     .offset((page - 1) * limit)
     .orderBy([
-      { column: "priority", order: "desc" },
-      { column: "created_at", order: "asc" },
+      { column: "queue.priority", order: "desc" },
+      { column: "queue.created_at", order: "desc" },
     ]);
   const rows = await query;
   return { rows, page, limit };

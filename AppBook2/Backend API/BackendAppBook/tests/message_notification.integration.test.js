@@ -143,4 +143,28 @@ describe("Messages and notifications", () => {
       .set("Authorization", `Bearer ${alice.token}`);
     expect(afterRead.body.data.count).toBe(0);
   });
+
+  it("registers an Expo push token on the current device session", async () => {
+    const user = await createUser("push_token_user");
+    accountIds.push(user.accountId);
+    const token = "ExponentPushToken[local-test-device]";
+
+    const registered = await request(app)
+      .put("/api/me/push-token")
+      .set("Authorization", `Bearer ${user.token}`)
+      .send({ token });
+    expect(registered.status).toBe(200);
+
+    const session = await db("user_sessions")
+      .where({ account_id: user.accountId })
+      .whereNull("revoked_at")
+      .first();
+    expect(session.fcm_token).toBe(token);
+
+    const invalid = await request(app)
+      .put("/api/me/push-token")
+      .set("Authorization", `Bearer ${user.token}`)
+      .send({ token: "not-a-push-token" });
+    expect(invalid.status).toBe(400);
+  });
 });

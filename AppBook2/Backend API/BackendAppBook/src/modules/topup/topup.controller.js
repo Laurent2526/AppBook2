@@ -1,4 +1,8 @@
-const { createTopupSchema, webhookTopupSchema } = require("./topup.schema");
+const {
+  createTopupSchema,
+  demoTopupSchema,
+  webhookTopupSchema,
+} = require("./topup.schema");
 const service = require("./topup.service");
 
 async function create(req, res, next) {
@@ -6,6 +10,16 @@ async function create(req, res, next) {
     const input = createTopupSchema.parse(req.body);
     const order = await service.create(req.auth.sub, input);
     res.status(201).json({ success: true, data: { order } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function demo(req, res, next) {
+  try {
+    const input = demoTopupSchema.parse(req.body);
+    const result = await service.demoTopup(req.auth.sub, input);
+    res.status(201).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
@@ -46,4 +60,4 @@ async function webhook(req, res, next) {
   }
 }
 
-module.exports = { create, list, get, webhook };
+module.exports = { create, demo, list, get, webhook };

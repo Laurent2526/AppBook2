@@ -1,11 +1,17 @@
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+} from "react-native";
 
 import { BackHeader } from "@/components/back-header";
 
 export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <BackHeader title="Cài đặt" />
         <Pressable style={styles.row}>
           <Text style={styles.label}>Thông báo</Text>
@@ -15,14 +21,14 @@ export default function SettingsScreen() {
           <Text style={styles.label}>Chế độ đọc</Text>
           <Text style={styles.value}>Sáng</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F7FA" },
-  content: { flex: 1, padding: 24 },
+  content: { flexGrow: 1, padding: 24 },
   title: {
     color: "#111827",
     fontSize: 28,

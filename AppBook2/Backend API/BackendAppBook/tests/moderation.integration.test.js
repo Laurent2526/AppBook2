@@ -127,9 +127,13 @@ describe("Content moderation", () => {
       .get("/api/admin/moderation")
       .set("Authorization", `Bearer ${admin.token}`);
     expect(queue.status).toBe(200);
-    expect(queue.body.data.rows.some((row) => row.id === moderation.id)).toBe(
-      true,
+    const queuedBook = queue.body.data.rows.find(
+      (row) => row.id === moderation.id,
     );
+    expect(queuedBook).toMatchObject({
+      title: bookResponse.body.data.book.title,
+      book_title: bookResponse.body.data.book.title,
+    });
 
     const approved = await request(app)
       .post(`/api/admin/moderation/${moderation.id}/approve`)

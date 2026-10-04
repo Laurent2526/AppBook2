@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const Decimal = require("decimal.js");
 const ApiError = require("../../utils/apiError");
+const env = require("../../config/env");
 const repository = require("./topup.repository");
 
 function orderCode() {
@@ -105,6 +106,57 @@ async function create(accountId, input) {
       expires_at: expiresAt,
     });
     return order;
+  });
+}
+
+async function demoTopup(accountId, input) {
+  if (env.NODE_ENV === "production") {
+    throw new ApiError(404, "NOT_FOUND", "Không tìm thấy tài nguyên");
+  }
+
+  const amount = new Decimal(input.amount).toFixed(2);
+  return repository.db.transaction(async (trx) => {
+    const wallet = await repository.findWalletForUpdate(trx, accountId);
+    if (!wallet) {
+      throw new ApiError(404, "WALLET_NOT_FOUND", "Không tìm thấy ví");
+    }
+
+    const balanceBefore = new Decimal(wallet.balance).toFixed(2);
+    const balanceAfter = new Decimal(balanceBefore).plus(amount).toFixed(2);
+    const transactionId = await repository.createTransaction(trx, {
+      code: transactionCode(),
+      transaction_type: "topup",
+      buyer_id: accountId,
+      amount,
+      platform_fee: "0.00",
+      seller_amount: "0.00",
+      payment_method: "system",
+      status: "success",
+      note: "Nạp tiền demo",
+      meta: JSON.stringify({ mode: "demo" }),
+      completed_at: trx.fn.now(),
+    });
+
+    await trx("wallets")
+      .where({ account_id: accountId })
+      .update({
+        balance: trx.raw("balance + ?", [amount]),
+        total_topup: trx.raw("total_topup + ?", [amount]),
+        version: trx.raw("version + 1"),
+      });
+
+    await repository.addLedger(trx, {
+      account_id: accountId,
+      transaction_id: transactionId,
+      direction: "credit",
+      amount,
+      balance_before: balanceBefore,
+      balance_after: balanceAfter,
+      reason: "topup",
+      note: "Nạp tiền demo trong ứng dụng",
+    });
+
+    return { transactionId, amount, balance: balanceAfter };
   });
 }
 
@@ -213,4 +265,4 @@ async function webhook(provider, payload, signature) {
   });
 }
 
-module.exports = { list, get, create, webhook };
+module.exports = { list, get, create, demoTopup, webhook };

@@ -82,6 +82,14 @@ describe("Withdraw and KYC", () => {
       .send({ bankAccountId: bank.body.data.bankAccount.id, amount: "200000" });
     expect(created.status).toBe(201);
     const withdrawalId = created.body.data.withdrawal.id;
+    const adminQueue = await request(app)
+      .get("/api/admin/withdrawals")
+      .set("Authorization", `Bearer ${admin.token}`);
+    expect(adminQueue.status).toBe(200);
+    expect(
+      adminQueue.body.data.withdrawals.find((item) => item.id === withdrawalId)
+        .account_username,
+    ).toContain("withdraw_user");
 
     let wallet = await db("wallets")
       .where({ account_id: user.accountId })

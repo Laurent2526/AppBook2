@@ -1,10 +1,12 @@
 import { request, resolveApiUrl } from "@/lib/api-client";
+import { File } from "expo-file-system";
 
 export type ReadingHistory = {
   id: string;
   book_id: string;
   last_chapter_id?: string | null;
   progress_percent?: string | number | null;
+  scroll_position?: number;
   chapters_read?: number;
   total_read_time?: number;
   last_read_at?: string;
@@ -38,8 +40,22 @@ export type MyBook = {
   description?: string | null;
   cover_url?: string | null;
   slug?: string;
+  reject_reason?: string | null;
+  view_count?: number;
+  purchase_count?: number;
+  total_revenue?: string | number;
   created_at?: string;
   updated_at?: string;
+};
+
+export type MyBookStatistics = {
+  bookId: string;
+  title: string;
+  status: string;
+  views: number;
+  purchases: number;
+  revenue: string;
+  followers: number;
 };
 
 export type Wallet = {
@@ -83,6 +99,7 @@ export function updateReadingHistory(
   payload: {
     lastChapterId?: string;
     progressPercent?: string;
+    scrollPosition?: number;
     chaptersRead?: number;
     totalReadTime?: number;
   },
@@ -167,8 +184,65 @@ export function getMyBooks(
   );
 }
 
+export function getMyBook(bookId: string) {
+  return request<{ book: MyBook }>(`/me/books/${bookId}`).then((data) => ({
+    book: {
+      ...data.book,
+      id: String(data.book.id),
+      cover_url: resolveApiUrl(data.book.cover_url) ?? null,
+    },
+  }));
+}
+
+export function updateMyBook(
+  bookId: string,
+  payload: {
+    title: string;
+    authorName: string;
+    description: string;
+  },
+) {
+  return request<{ moderationRequest: { id: number; status: string } }>(
+    `/books/${bookId}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+  );
+}
+
+export function requestMyBookDeletion(bookId: string, reason: string) {
+  return request<{ moderationRequest: { id: number; status: string } }>(
+    `/books/${bookId}/delete-request`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
+export function getMyBookStatistics(bookId: string) {
+  return request<{ statistics: MyBookStatistics }>(
+    `/me/books/${bookId}/statistics`,
+  ).then((data) => ({
+    statistics: { ...data.statistics, bookId: String(data.statistics.bookId) },
+  }));
+}
+
 export function getWallet() {
   return request<{ wallet: Wallet }>("/me/wallet");
+}
+
+export function createDemoTopup(amount: string) {
+  return request<{
+    transactionId: string;
+    amount: string;
+    balance: string;
+  }>("/topups/demo", {
+    method: "POST",
+    body: JSON.stringify({ amount }),
+  });
+}
+
+export function purchaseChapter(chapterId: string) {
+  return request<{ transactionId: string; status: string }>(
+    `/chapters/${chapterId}/purchase`,
+    { method: "POST" },
+  );
 }
 
 export function getWalletEntries() {
@@ -197,11 +271,7 @@ export function createBook(payload: {
     formData.append("writingStatus", payload.writingStatus);
   if (payload.language) formData.append("language", payload.language);
   if (payload.cover) {
-    formData.append("cover", {
-      uri: payload.cover.uri,
-      name: payload.cover.name ?? "cover.jpg",
-      type: payload.cover.type ?? "image/jpeg",
-    } as unknown as Blob);
+    formData.append("cover", new File(payload.cover.uri));
   }
   return request<{ book: Record<string, unknown> }>("/books", {
     method: "POST",

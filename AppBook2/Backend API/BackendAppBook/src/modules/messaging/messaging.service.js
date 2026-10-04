@@ -1,6 +1,8 @@
 const db = require("../../config/db");
 const ApiError = require("../../utils/apiError");
 const repository = require("./messaging.repository");
+const realtime = require("./realtime");
+const { sendPushToAccount } = require("./push.service");
 
 async function assertNotBlocked(trx, firstId, secondId) {
   const blocked =
@@ -53,7 +55,7 @@ async function listConversations(accountId) {
 }
 
 async function sendMessage(accountId, conversationId, input) {
-  return db.transaction(async (trx) => {
+  const result = await db.transaction(async (trx) => {
     const conversation = await repository.findConversationForUser(
       trx,
       conversationId,
@@ -74,7 +76,7 @@ async function sendMessage(accountId, conversationId, input) {
         : conversation.user_a_id;
     await assertNotBlocked(trx, accountId, receiverId);
 
-    return repository.createMessage(trx, {
+    const message = await repository.createMessage(trx, {
       conversation_id: conversationId,
       sender_id: accountId,
       receiver_id: receiverId,
@@ -82,7 +84,19 @@ async function sendMessage(accountId, conversationId, input) {
       message_type: input.messageType,
       attachment_url: input.attachmentUrl || null,
     });
+    return { message, receiverId };
   });
+
+  realtime.emitToAccount(result.receiverId, "message:new", result.message);
+  realtime.emitToAccount(accountId, "message:new", result.message);
+  await createNotification({
+    accountId: result.receiverId,
+    type: "social",
+    title: "Tin nhắn mới",
+    content: "Bạn có tin nhắn mới.",
+    refType: "none",
+  });
+  return result.message;
 }
 
 async function listMessages(accountId, conversationId) {
@@ -166,8 +180,13 @@ async function markNotificationRead(accountId, notificationId) {
   return { read: true };
 }
 
+async function registerPushToken(accountId, sessionId, token) {
+  await repository.registerPushToken(accountId, sessionId, token);
+  return { registered: true };
+}
+
 async function createNotification(input) {
-  return repository.createNotification({
+  const notification = await repository.createNotification({
     account_id: input.accountId,
     type: input.type,
     title: input.title,
@@ -175,6 +194,13 @@ async function createNotification(input) {
     ref_type: input.refType || "none",
     ref_id: input.refId || null,
   });
+  realtime.emitToAccount(input.accountId, "notification:new", notification);
+  try {
+    await sendPushToAccount(input.accountId, notification);
+  } catch (error) {
+    console.warn("push notification delivery failed", error.message);
+  }
+  return notification;
 }
 
 module.exports = {
@@ -188,5 +214,6 @@ module.exports = {
   listNotifications,
   unreadNotificationCount,
   markNotificationRead,
+  registerPushToken,
   createNotification,
 };

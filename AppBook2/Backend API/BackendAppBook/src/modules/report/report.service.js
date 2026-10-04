@@ -116,6 +116,49 @@ async function decide(admin, reportId, input, status) {
     }
 
     if (status === "resolved") {
+      if (input.actionTaken === "account_locked") {
+        if (report.target_type !== "account" || target.role !== "user") {
+          throw new ApiError(
+            409,
+            "REPORT_TARGET_NOT_LOCKABLE",
+            "Chỉ có thể khóa tài khoản người dùng thông thường từ báo cáo",
+          );
+        }
+        if (target.status !== "active") {
+          throw new ApiError(
+            409,
+            "REPORT_ACCOUNT_NOT_ACTIVE",
+            "Tài khoản không còn ở trạng thái hoạt động",
+          );
+        }
+        await trx("accounts").where({ id: report.target_id }).update({
+          status: "locked",
+          lock_reason: input.adminNote || "Khóa sau khi xử lý báo cáo",
+          locked_at: trx.fn.now(),
+          locked_by: admin.id,
+          locked_until: null,
+        });
+        await trx("user_sessions")
+          .where({ account_id: report.target_id })
+          .whereNull("revoked_at")
+          .update({
+            revoked_at: trx.fn.now(),
+            revoked_reason: "admin_lock",
+          });
+        await repository.createAuditLog(trx, {
+          actor_id: admin.id,
+          actor_role: admin.role,
+          action: "account.lock",
+          target_type: "account",
+          target_id: report.target_id,
+          old_value: JSON.stringify({ status: target.status }),
+          new_value: JSON.stringify({
+            status: "locked",
+            reason: input.adminNote || "Khóa sau khi xử lý báo cáo",
+            reportId: report.id,
+          }),
+        });
+      }
       if (
         input.actionTaken === "hidden" &&
         contentTargets.has(report.target_type)

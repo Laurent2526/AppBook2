@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -7,17 +7,24 @@ import { ThemedView } from '@/components/themed-view';
 export default function ModalScreen() {
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title">This is a modal</ThemedText>
-      <Link href="/" dismissTo style={styles.link}>
-        <ThemedText type="link">Go to home screen</ThemedText>
-      </Link>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+      >
+        <ThemedText type="title">This is a modal</ThemedText>
+        <Link href="/" dismissTo style={styles.link}>
+          <ThemedText type="link">Go to home screen</ThemedText>
+        </Link>
+      </ScrollView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  scroll: { flex: 1 },
+  content: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,

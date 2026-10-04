@@ -1,5 +1,6 @@
 import { useAuth } from "@/components/auth-provider";
 import { BackHeader } from "@/components/back-header";
+import { BookCover } from "@/components/book-cover";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import {
@@ -7,8 +8,9 @@ import {
   getPurchases,
   getReadingHistory,
 } from "@/lib/account-api";
+import { getMyRatings } from "@/lib/interaction-api";
 import { getBookById } from "@/lib/discover-api";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React from "react";
 import {
   FlatList,
@@ -25,18 +27,22 @@ const tabs = ["Lịch sử", "Tủ truyện", "Mua combo", "Đánh giá"];
 type LibraryItem = {
   id: string;
   title: string;
+  coverUrl?: string;
   chapter: string;
   bookId: string;
   chapterId?: string;
+  scrollPosition?: number;
+  progressPercent?: number;
   color: string;
   time?: string;
+  score?: number;
 };
 
 const colors = ["#F59E0B", "#A78BFA", "#60A5FA", "#34D399", "#F97316"];
 
 export default function LibraryScreen() {
   const router = useRouter();
-  const { isAuthenticated, readingHistory } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = React.useState("Lịch sử");
   const [items, setItems] = React.useState<Record<string, LibraryItem[]>>({
     "Lịch sử": [],
@@ -47,82 +53,105 @@ export default function LibraryScreen() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    if (!isAuthenticated) return;
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) return;
+      let active = true;
+      const load = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const [historyResult, bookmarkResult, purchaseResult, ratingResult] =
+            await Promise.all([
+              getReadingHistory(),
+              getBookmarks(),
+              getPurchases(),
+              getMyRatings(),
+            ]);
+          const bookIds = [
+            ...historyResult.items.map((item) => item.book_id),
+            ...bookmarkResult.items.map((item) => item.book_id),
+            ...purchaseResult.rows.map((item) => item.book_id),
+            ...ratingResult.items.map((item) => item.book_id),
+          ];
+          const uniqueBookIds = [...new Set(bookIds)];
+          const books = await Promise.all(
+            uniqueBookIds.map(async (bookId) => {
+              try {
+                const result = await getBookById(bookId);
+                return [
+                  bookId,
+                  { title: result.book.title, coverUrl: result.book.coverUrl },
+                ] as const;
+              } catch {
+                return [
+                  bookId,
+                  { title: "Truyện không còn khả dụng", coverUrl: undefined },
+                ] as const;
+              }
+            }),
+          );
+          const titles = Object.fromEntries(books);
 
-    let active = true;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [historyResult, bookmarkResult, purchaseResult] =
-          await Promise.all([
-            getReadingHistory(),
-            getBookmarks(),
-            getPurchases(),
-          ]);
-        const bookIds = [
-          ...historyResult.items.map((item) => item.book_id),
-          ...bookmarkResult.items.map((item) => item.book_id),
-          ...purchaseResult.rows.map((item) => item.book_id),
-        ];
-        const uniqueBookIds = [...new Set(bookIds)];
-        const books = await Promise.all(
-          uniqueBookIds.map(async (bookId) => {
-            try {
-              const result = await getBookById(bookId);
-              return [bookId, result.book.title] as const;
-            } catch {
-              return [bookId, "Truyện không còn khả dụng"] as const;
-            }
-          }),
-        );
-        const titles = Object.fromEntries(books);
+          if (!active) return;
+          setItems({
+            "Lịch sử": historyResult.items.map((item, index) => ({
+              id: item.id,
+              title: titles[item.book_id]?.title || "Truyện",
+              coverUrl: titles[item.book_id]?.coverUrl,
+              chapter: item.last_chapter_id
+                ? `Chương ${item.chapters_read || 1}`
+                : "Chưa có chương đọc",
+              bookId: item.book_id,
+              chapterId: item.last_chapter_id || undefined,
+              scrollPosition: Number(item.scroll_position || 0),
+              progressPercent: Number(item.progress_percent || 0),
+              color: colors[index % colors.length],
+              time: item.last_read_at,
+            })),
+            "Tủ truyện": bookmarkResult.items.map((item, index) => ({
+              id: item.id,
+              title: titles[item.book_id]?.title || "Truyện",
+              coverUrl: titles[item.book_id]?.coverUrl,
+              chapter: "Đã lưu",
+              bookId: item.book_id,
+              color: colors[index % colors.length],
+            })),
+            "Mua combo": purchaseResult.rows.map((item, index) => ({
+              id: item.id,
+              title: item.book_title || titles[item.book_id]?.title || "Truyện",
+              coverUrl: titles[item.book_id]?.coverUrl,
+              chapter:
+                item.chapter_title || `Chương ${item.chapter_number || ""}`,
+              bookId: item.book_id,
+              chapterId: item.chapter_id,
+              color: colors[index % colors.length],
+            })),
+            "Đánh giá": ratingResult.items.map((item, index) => ({
+              id: item.id,
+              title: item.book_title,
+              coverUrl: titles[item.book_id]?.coverUrl,
+              chapter: `${item.score}/5 sao`,
+              bookId: item.book_id,
+              color: colors[index % colors.length],
+              score: item.score,
+              time: item.updated_at || item.created_at,
+            })),
+          });
+        } catch (loadError) {
+          console.warn("library fetch failed", loadError);
+          if (active) setError("Không tải được dữ liệu thư viện.");
+        } finally {
+          if (active) setLoading(false);
+        }
+      };
 
-        if (!active) return;
-        setItems({
-          "Lịch sử": historyResult.items.map((item, index) => ({
-            id: item.id,
-            title: titles[item.book_id] || "Truyện",
-            chapter: item.last_chapter_id
-              ? `Chương đã đọc (${item.chapters_read || 0})`
-              : "Chưa có chương đọc",
-            bookId: item.book_id,
-            chapterId: item.last_chapter_id || undefined,
-            color: colors[index % colors.length],
-            time: item.last_read_at,
-          })),
-          "Tủ truyện": bookmarkResult.items.map((item, index) => ({
-            id: item.id,
-            title: titles[item.book_id] || "Truyện",
-            chapter: "Đã lưu",
-            bookId: item.book_id,
-            color: colors[index % colors.length],
-          })),
-          "Mua combo": purchaseResult.rows.map((item, index) => ({
-            id: item.id,
-            title: item.book_title || titles[item.book_id] || "Truyện",
-            chapter:
-              item.chapter_title || `Chương ${item.chapter_number || ""}`,
-            bookId: item.book_id,
-            chapterId: item.chapter_id,
-            color: colors[index % colors.length],
-          })),
-          "Đánh giá": [],
-        });
-      } catch (loadError) {
-        console.warn("library fetch failed", loadError);
-        if (active) setError("Không tải được dữ liệu thư viện.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [isAuthenticated]);
+      void load();
+      return () => {
+        active = false;
+      };
+    }, [isAuthenticated]),
+  );
 
   const data = items[activeTab] || [];
 
@@ -132,6 +161,11 @@ export default function LibraryScreen() {
       params: {
         bookId: item.bookId,
         chapterId: item.chapterId,
+        chapter: item.chapter.match(/\d+/)?.[0],
+        scrollPosition:
+          item.scrollPosition !== undefined
+            ? String(item.scrollPosition)
+            : undefined,
       },
     });
   };
@@ -173,22 +207,29 @@ export default function LibraryScreen() {
                 ? "Đang tải dữ liệu..."
                 : error ||
                   (isAuthenticated
-                    ? activeTab === "Đánh giá"
-                      ? "Backend chưa có API danh sách đánh giá của bạn."
-                      : "Chưa có dữ liệu trong mục này."
+                    ? "Chưa có dữ liệu trong mục này."
                     : "Đăng nhập để xem thư viện cá nhân.")}
             </Text>
           }
           renderItem={({ item }: { item: LibraryItem }) => (
             <Pressable style={styles.item} onPress={() => openItem(item)}>
-              <View style={[styles.cover, { backgroundColor: item.color }]}>
-                <Text style={styles.coverText}>
-                  {item.title.slice(0, 2).toUpperCase()}
-                </Text>
-              </View>
+              <BookCover
+                uri={item.coverUrl}
+                title={item.title}
+                fallbackColor={item.color}
+                style={styles.cover}
+              />
               <View style={styles.info}>
                 <ThemedText style={styles.title}>{item.title}</ThemedText>
                 <Text style={styles.meta}>{item.chapter}</Text>
+                {item.progressPercent ? (
+                  <Text style={styles.meta}>
+                    Đã đọc {Math.floor(item.progressPercent)}% chương
+                  </Text>
+                ) : null}
+                {item.score ? (
+                  <Text style={styles.rating}>★ {item.score}/5</Text>
+                ) : null}
                 {item.time && <Text style={styles.meta}>{item.time}</Text>}
               </View>
               <Text style={styles.arrow}>›</Text>
@@ -237,14 +278,12 @@ const styles = StyleSheet.create({
     width: 62,
     height: 86,
     borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
     marginRight: 12,
   },
-  coverText: { color: "#FFF", fontSize: 18, fontWeight: "700" },
   info: { flex: 1 },
   title: { fontWeight: "700", color: "#111827", marginBottom: 6 },
   meta: { color: "#6B7280", fontSize: 12, marginTop: 3 },
+  rating: { color: "#C28719", fontSize: 12, fontWeight: "700", marginTop: 4 },
   arrow: { color: "#9CA3AF", fontSize: 28 },
   empty: { color: "#6B7280", textAlign: "center", padding: 28, lineHeight: 22 },
 });

@@ -105,7 +105,8 @@ describe("Category, book and chapter", () => {
 
   it("only exposes published books and protects paid chapter content", async () => {
     const owner = await createVerifiedUser("public_owner");
-    accountIds.push(owner.accountId);
+    const reader = await createVerifiedUser("public_reader");
+    accountIds.push(owner.accountId, reader.accountId);
 
     const book = await db("books").insert({
       owner_id: owner.accountId,
@@ -125,7 +126,18 @@ describe("Category, book and chapter", () => {
       chapter_number: 1,
       title: "Paid chapter",
       content: "Secret paid content",
-      preview_text: "Safe preview",
+      preview_text: "Secret paid content",
+      is_free: 0,
+      price: "10000.00",
+      status: "published",
+      published_at: db.fn.now(),
+    });
+    const previewChapter = await db("chapters").insert({
+      book_id: bookId,
+      chapter_number: 2,
+      title: "Paid chapter with teaser",
+      content: "The complete chapter content is much longer than this teaser.",
+      preview_text: "A safe short teaser.",
       is_free: 0,
       price: "10000.00",
       status: "published",
@@ -140,6 +152,34 @@ describe("Category, book and chapter", () => {
     expect(publicChapter.status).toBe(200);
     expect(publicChapter.body.data.chapter.content).toBe(null);
     expect(publicChapter.body.data.chapter.content_url).toBe(null);
+    expect(publicChapter.body.data.chapter.preview_text).toBe(null);
     expect(publicChapter.body.data.chapter.requiresPurchase).toBe(true);
+
+    const loggedInReaderChapter = await request(app)
+      .get(`/api/chapters/${chapter[0]}`)
+      .set("Authorization", `Bearer ${reader.token}`);
+    expect(loggedInReaderChapter.status).toBe(200);
+    expect(loggedInReaderChapter.body.data.chapter.content).toBe(null);
+    expect(loggedInReaderChapter.body.data.chapter.content_url).toBe(null);
+    expect(loggedInReaderChapter.body.data.chapter.preview_text).toBe(null);
+    expect(loggedInReaderChapter.body.data.chapter.requiresPurchase).toBe(true);
+
+    const ownerChapter = await request(app)
+      .get(`/api/chapters/${chapter[0]}`)
+      .set("Authorization", `Bearer ${owner.token}`);
+    expect(ownerChapter.status).toBe(200);
+    expect(ownerChapter.body.data.chapter.content).toBe("Secret paid content");
+    expect(ownerChapter.body.data.chapter.preview_text).toBe(
+      "Secret paid content",
+    );
+
+    const chapterWithSafePreview = await request(app).get(
+      `/api/chapters/${previewChapter[0]}`,
+    );
+    expect(chapterWithSafePreview.status).toBe(200);
+    expect(chapterWithSafePreview.body.data.chapter.content).toBe(null);
+    expect(chapterWithSafePreview.body.data.chapter.preview_text).toBe(
+      "A safe short teaser.",
+    );
   });
 });

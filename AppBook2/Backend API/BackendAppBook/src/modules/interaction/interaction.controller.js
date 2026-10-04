@@ -44,6 +44,15 @@ async function listComments(req, res, next) {
   }
 }
 
+async function listMyRatings(req, res, next) {
+  try {
+    const items = await service.listMyRatings(req.auth.sub);
+    res.json({ success: true, data: { items } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function updateComment(req, res, next) {
   try {
     const { id } = commentIdSchema.parse(req.params);
@@ -78,6 +87,7 @@ module.exports = {
   rate,
   createComment,
   listComments,
+  listMyRatings,
   updateComment,
   deleteComment,
 };

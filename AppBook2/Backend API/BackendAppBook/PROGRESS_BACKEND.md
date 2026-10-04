@@ -11,6 +11,8 @@ File này ghi lại tiến độ thực tế, quyết định kỹ thuật và n
 
 **Đang ở phase:** Phase 13 đã hoàn thiện phần Admin statistics và daily rollup cơ bản; Book/Chapter update-delete đã được bổ sung.
 
+**Cập nhật gần nhất:** Đã nối luồng nạp tiền demo trên Mobile với mua chapter bằng số dư ví; endpoint demo bị khóa ở production.
+
 **Chức năng tiếp theo:** Background jobs vận hành, Socket.IO realtime và FCM retry.
 
 **Công cụ kiểm thử API:** Swagger UI đã được bật tại `/api-docs` cho app `src`.
@@ -490,7 +492,7 @@ Regression toàn bộ: 4 test files, 11 tests passed
 
 - Purchase thành công với chia doanh thu 5%/95%.
 - Buyer balance về đúng `0.00`, seller nhận đúng `9500.00` khi giá `10000.00`.
-- Có đúng 2 wallet ledger entries: `purchase` và `earning`.
+- Có 3 wallet ledger entries: `purchase`, `earning` và `platform_fee`; admin chính nhận 5% phí nền tảng.
 - Entitlement và transaction được tạo.
 - Buyer đọc được full chapter sau purchase.
 - Duplicate, insufficient balance, owner, free chapter và missing chapter đều trả lỗi đúng.
@@ -878,6 +880,224 @@ Regression toàn bộ: 14 test files, 24 tests passed
 ### Chức năng tiếp theo
 
 - Background jobs vận hành, Socket.IO realtime và FCM retry.
+
+## 6.12. Nạp tiền demo và mua chapter trên Mobile
+
+### Endpoint/module
+
+```text
+POST /api/topups/demo
+POST /api/chapters/:id/purchase
+```
+
+### Quy tắc đã triển khai
+
+- User đã đăng nhập chọn mệnh giá cố định `50.000`, `100.000`, `200.000`, `500.000` hoặc `1.000.000` VND trong màn Ví.
+- Endpoint demo cộng tiền ngay vào ví trong database transaction, ghi transaction `topup` với `payment_method = system` và ghi wallet ledger.
+- Chỉ cho phép gọi endpoint demo khi backend không chạy production; webhook thanh toán thật không thay đổi.
+- Reader gọi API mua chapter hiện có; khi thiếu số dư, hướng người dùng tới màn Ví. Sau khi mua thành công, tải lại chapter để mở nội dung.
+
+### File đã thay đổi
+
+- `src/modules/topup/topup.schema.js`
+- `src/modules/topup/topup.service.js`
+- `src/modules/topup/topup.controller.js`
+- `src/modules/topup/topup.routes.js`
+- `tests/topup.integration.test.js`
+- `StickerSmash/lib/account-api.ts`
+- `StickerSmash/app/(user)/account/wallet.tsx`
+- `StickerSmash/app/reader.tsx`
+- `API_FEATURES.md`
+
+### Kiểm chứng
+
+- Top-up integration test xác nhận nạp demo, từ chối mệnh giá ngoài danh sách, mua chapter từ số dư vừa nạp, chia 95% doanh thu tác giả và cấp quyền đọc.
+- Mobile TypeScript check và ESLint cho các file thay đổi đều đạt.
+- Full backend regression mới nhất sau khi bổ sung quản lý Admin: 16 test files, 28 tests passed.
+
+### Chức năng tiếp theo
+
+- Tích hợp Socket.IO/FCM hoặc tiếp tục hoàn thiện các chức năng tài chính Mobile khác nếu còn trong phạm vi demo.
+
+## 6.13. Admin account/book và author management
+
+### Endpoint/module
+
+```text
+GET    /api/admin/accounts
+PATCH  /api/admin/accounts/:id/status
+DELETE /api/admin/accounts/:id
+GET    /api/admin/books
+GET    /api/admin/books/:id
+PATCH  /api/admin/books/:id
+PATCH  /api/admin/books/:id/status
+DELETE /api/admin/books/:id
+GET    /api/me/books/:id
+GET    /api/me/books/:id/statistics
+PATCH  /api/books/:id
+POST   /api/books/:id/delete-request
+```
+
+### Quy tắc đã triển khai
+
+- Admin/super_admin tìm kiếm, lọc và phân trang tài khoản/sách toàn hệ thống.
+- Account list không trả password hash; lock account active revoke các session bằng enum reason `admin_lock`; unlock chỉ nhận account đang locked.
+- Không cho khóa/xóa chính mình; bảo vệ super_admin; account admin chỉ super_admin được quản lý.
+- Xóa mềm account ẩn danh profile, giữ khóa lịch sử tài chính; từ chối nếu còn sách published.
+- Admin xem chi tiết/chapter, chỉnh metadata/trạng thái và soft delete sách; thao tác ghi audit log.
+- Public không thể lấy chapter trực tiếp của sách hidden/deleted; người đã mua chapter trả phí vẫn đọc theo entitlement.
+- Author xem chi tiết và số liệu sách của mình, gửi sửa qua moderation và yêu cầu xóa chờ duyệt.
+- Mobile có thao tác sửa, yêu cầu xóa, xem lượt đọc/bán/doanh thu từng sách.
+
+### File đã thay đổi
+
+- `src/modules/admin/*`
+- `src/modules/book/book.service.js`
+- `src/modules/book/book.controller.js`
+- `src/routes/index.js`
+- `tests/admin_management.integration.test.js`
+- `StickerSmash/lib/account-api.ts`
+- `StickerSmash/app/(user)/account/my-books.tsx`
+- `StickerSmash/app/(user)/account/edit-book.tsx`
+- `StickerSmash/app/(user)/account/book-statistics.tsx`
+- `StickerSmash/app/(user)/_layout.tsx`
+- `Admin/admin-web/src/services/management-api.ts`
+- `Admin/admin-web/src/components/management-panel.tsx`
+- `Admin/admin-web/src/app/page.tsx`
+- `Admin/admin-web/src/app/globals.css`
+- `Admin/admin-web/tsconfig.json`
+- `API_FEATURES.md`
+
+### Kiểm chứng
+
+- Admin management integration: 2 passed.
+- Full regression: 16 test files, 28 tests passed.
+- Mobile TypeScript và ESLint các file thay đổi: đạt.
+- Admin `npm run build`: đạt sau khi chỉnh `ignoreDeprecations` về `5.0`, đúng với TypeScript 5.x trong project.
+
+### Chức năng tiếp theo
+
+- Admin sign-in UI và các màn dashboard/thống kê/tài chính chưa nằm trong scope hiện tại.
+
+## 6.14. Discovery, search va recommendation theo history
+
+### Endpoint/module
+
+```text
+GET /api/books?search=...&sortBy=latest|hot
+GET /api/discovery/featured-authors
+GET /api/discovery/recommendations
+GET /api/discovery/following
+```
+
+### Quy tắc đã triển khai
+
+- Search sách match title, author, description va ten category.
+- Truyện mới sort theo last chapter; truyện hot sort theo views, purchases, followers từ database.
+- Featured authors tổng hợp số truyện, views, purchases, doanh thu và follower count; có search theo username/full name.
+- Recommendations lấy thể loại từ reading_history, trọng số theo chapters_read, loại sách đã đọc và hỗ trợ chọn nhiều thể loại làm filter bổ sung.
+- Không đăng nhập hoặc chưa có history/category preference thì recommendations fallback sang hot books.
+- Following endpoint trả ba bộ riêng: account đang follow, book đang follow và bookmarks thực tế.
+- Home search mở Explore với từ khóa; Home/Explore hot metrics và author metrics lấy trực tiếp từ API.
+- Chi tiết sách có thao tác follow sách/tác giả để feed được cập nhật từ nghiệp vụ thật.
+
+### File đã thay đổi
+
+- `src/modules/book/book.schema.js`
+- `src/modules/book/book.repository.js`
+- `src/modules/discovery/*`
+- `src/routes/index.js`
+- `tests/discovery.integration.test.js`
+- `StickerSmash/lib/discover-api.ts`
+- `StickerSmash/app/(user)/home/index.tsx`
+- `StickerSmash/app/(user)/home/explore.tsx`
+- `StickerSmash/app/(user)/discover/index.tsx`
+- `StickerSmash/components/discover-following.tsx`
+- `StickerSmash/components/discover-recommendations.tsx`
+- `StickerSmash/app/book-detail.tsx`
+- `API_FEATURES.md`
+
+### Kiểm chứng
+
+- Discovery integration: 2 passed, bao phủ search title/category, hot rank, featured authors, recommendations theo history, follow account/book và bookmarks.
+- Content regression: 3 passed.
+- Full backend regression: 17 test files, 30 tests passed.
+- Mobile TypeScript và ESLint trên discovery screens/API: đạt.
+
+### Chức năng tiếp theo
+
+- Bổ sung paging/infinite scroll cho các feed discovery nếu cần mở rộng danh sách lớn.
+
+## 6.15. Mobile messaging, notifications và interactions
+
+### Endpoint/module
+
+```text
+GET    /api/conversations
+POST   /api/conversations
+GET    /api/conversations/:id/messages
+POST   /api/conversations/:id/messages
+PATCH  /api/messages/:id/read
+GET    /api/me/notifications
+GET    /api/me/notifications/unread-count
+PATCH  /api/notifications/:id/read
+PUT    /api/me/push-token
+POST   /api/books/:id/ratings
+GET    /api/me/ratings
+POST   /api/books/:id/comments
+GET    /api/books/:id/comments
+POST   /api/reports
+POST   /api/users/:id/block
+DELETE /api/users/:id/block
+```
+
+### Quy tắc đã triển khai
+
+- REST conversations/messages/notifications là nguồn dữ liệu chính; inbox trả peer, last-message preview và unread count.
+- Socket.IO handshake xác thực JWT và session active; user chỉ join account room của mình.
+- Sau khi transaction DB commit, backend emit `message:new` và `notification:new` tới account rooms.
+- Expo push token gắn với session tại `user_sessions.fcm_token`; Expo Push ticket thành công mới cập nhật `notifications.pushed_at`.
+- Mobile có system notifications/personal inbox, chat history/send/read, socket realtime và polling fallback, report/block người dùng.
+- Book detail có rating 1–5, comments, report book/comment; Library tab Đánh giá load ratings của chính user.
+- Remote push yêu cầu `EXPO_PUBLIC_EAS_PROJECT_ID`, EAS push credentials và development build. Expo Go Android không hỗ trợ remote push; REST notification vẫn hoạt động.
+- Chưa có push receipt retry/token cleanup job; nếu push lỗi, notification vẫn nằm trong MySQL để đọc qua REST.
+
+### File đã thay đổi
+
+- `src/server.js`
+- `src/modules/messaging/*`
+- `src/modules/interaction/interaction.controller.js`
+- `src/modules/interaction/interaction.service.js`
+- `src/modules/interaction/interaction.repository.js`
+- `src/modules/interaction/interaction.routes.js`
+- `tests/message_notification.integration.test.js`
+- `tests/rating_comment.integration.test.js`
+- `tests/realtime.integration.test.js`
+- `StickerSmash/app.json`
+- `StickerSmash/components/auth-provider.tsx`
+- `StickerSmash/components/messages-screen.tsx`
+- `StickerSmash/app/(user)/messages/index.tsx`
+- `StickerSmash/app/(user)/messages/[conversationId].tsx`
+- `StickerSmash/app/(user)/library/index.tsx`
+- `StickerSmash/app/book-detail.tsx`
+- `StickerSmash/lib/api-client.ts`
+- `StickerSmash/lib/messaging-api.ts`
+- `StickerSmash/lib/interaction-api.ts`
+- `StickerSmash/lib/push-notifications.ts`
+- `StickerSmash/.env.example`
+- `API_FEATURES.md`
+
+### Kiểm chứng
+
+- Messaging/ratings integrations: 3 passed, gồm Expo push-token registration và personal ratings.
+- Socket.IO integration: 1 passed; anonymous client bị từ chối, session hợp lệ chỉ nhận private room event.
+- Full backend regression: 18 test files, 32 tests passed.
+- Mobile TypeScript và targeted ESLint: đạt.
+
+### Chức năng tiếp theo
+
+- Cấu hình EAS project ID/credentials và xác minh remote push trên development build thiết bị thật.
+- Thêm receipt retry/cleanup token; cân nhắc tìm user theo username khi tạo hội thoại thay vì nhập account ID.
 
 ## 7. Ngữ cảnh khi bắt đầu phiên tiếp theo
 

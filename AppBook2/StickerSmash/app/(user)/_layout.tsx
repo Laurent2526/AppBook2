@@ -71,6 +71,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="messages/[conversationId]"
+        options={{ href: null, tabBarStyle: { display: "none" } }}
+      />
+      <Tabs.Screen
         name="account/index"
         options={{
           title: "Tài khoản",
@@ -93,6 +97,18 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="account/transactions"
+        options={{ href: null, tabBarStyle: { display: "none" } }}
+      />
+      <Tabs.Screen
+        name="account/edit-book"
+        options={{ href: null, tabBarStyle: { display: "none" } }}
+      />
+      <Tabs.Screen
+        name="account/add-chapter"
+        options={{ href: null, tabBarStyle: { display: "none" } }}
+      />
+      <Tabs.Screen
+        name="account/book-statistics"
         options={{ href: null, tabBarStyle: { display: "none" } }}
       />
     </Tabs>

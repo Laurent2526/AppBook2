@@ -11,7 +11,7 @@ Tai lieu nay tong hop cac chuc nang da duoc trien khai trong backend APPBOOK va 
 - Test: Vitest + Supertest
 - Database source of truth: `BTL_Mobile.sql`
 
-> Cac API duoi day la REST API. Socket.IO realtime va FCM push delivery chua duoc tich hop; du lieu message/notification hien tai da duoc luu va doc tu MySQL.
+> Message/notification duoc luu trong MySQL va expose qua REST; Socket.IO realtime da duoc bat cho authenticated sessions. Push delivery dung Expo Push Service (FCM tren Android/APNs tren iOS) khi device session co Expo push token.
 
 ## 1. Quy uoc chung
 
@@ -109,11 +109,32 @@ Da hoan thien:
 - Kiem tra ownership khi tao chapter.
 - Validate gia chapter free/paid.
 - Public chi thay noi dung `published`.
+- Book list ho tro search theo title/author/description/category va `sortBy=latest|hot`; hot xep theo views, purchases va followers.
 - Chapter paid chua mua chi tra preview, khong tra content day du.
 - Tao slug tu dong va chong trung slug/chapter number.
 - Update luu payload vao moderation request, khong sua truc tiep noi dung public.
 - Chapter update tao snapshot vao `chapter_versions` truoc khi apply.
 - Delete chuyen qua `pending_delete` va `deleted_at`, khong xoa vat ly.
+- Author xem chi tiet va bo dem luot doc/ban/doanh thu sach cua minh qua `GET /api/me/books/:id` va `GET /api/me/books/:id/statistics`.
+
+## 4.1. Discovery, recommendation va featured authors
+
+Module: `src/modules/discovery` va `src/modules/book`
+
+| Method | Endpoint                             | Quyen                | Mo ta                                                                                                    |
+| ------ | ------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `GET`  | `/api/books?search=...&sortBy=latest | hot`                 | Public                                                                                                   | Search sach theo title/author/description/category; xep moi hoac hot theo counter that |
+| `GET`  | `/api/discovery/featured-authors`    | Public               | Xep hang author theo views, followers va so sach; ho tro search, `limit`                                 |
+| `GET`  | `/api/discovery/recommendations`     | Public/Authenticated | Gợi ý theo categoryIds tuy chon hoac reading history; anonymous/khong co history fallback sang hot books |
+| `GET`  | `/api/discovery/following`           | Authenticated        | Tra account follow, book follow va bookmark thanh ba danh sach rieng                                     |
+
+Da hoan thien:
+
+- Recommendations lay category tu reading history, uu tien category cua sach co chapters_read cao va loai cac sach da co trong history.
+- User co the chon nhieu category de filter; neu khong chon, API dung reading history.
+- Featured authors va hot books dung counters/views/sales/followers/revenue trong DB, khong dung so lieu sinh o client.
+- Following feed join target account/book va bookmarks cua user; khong tra danh sach book bat ky lam saved.
+- Search tren Home mo Explore voi tu khoa; Explore gui search/category/status sort len API.
 
 ## 5. Moderation book va chapter
 
@@ -134,6 +155,40 @@ Da hoan thien:
 - Ghi audit log.
 - Khong cho xu ly lai request da co ket qua.
 
+## 5.1. Admin account va book management
+
+Module: `src/modules/admin`
+
+Tat ca endpoint can role `admin` hoac `super_admin`.
+
+| Method   | Endpoint                         | Mo ta                                                                                |
+| -------- | -------------------------------- | ------------------------------------------------------------------------------------ |
+| `GET`    | `/api/admin/accounts`            | Tim kiem/lọc tai khoan theo ten, username, email, phone, role, status; co pagination |
+| `PATCH`  | `/api/admin/accounts/:id/status` | Khoa/mo khoa account; khoa revoke session va ghi audit log                           |
+| `DELETE` | `/api/admin/accounts/:id`        | Xoa mem, an danh PII, revoke session; chan neu con sach published                    |
+| `GET`    | `/api/admin/books`               | Tim sach toan he thong, xem owner, status, views, sales, revenue                     |
+| `GET`    | `/api/admin/books/:id`           | Xem chi tiet sach va danh sach chapter                                               |
+| `PATCH`  | `/api/admin/books/:id`           | Admin sua metadata sach va ghi audit log                                             |
+| `PATCH`  | `/api/admin/books/:id/status`    | Chuyen published/hidden/rejected; reject bat buoc co ly do                           |
+| `DELETE` | `/api/admin/books/:id`           | Xoa mem sach, dong moderation request dang cho va ghi audit log                      |
+
+Author book management:
+
+| Method  | Endpoint                        | Mo ta                                              |
+| ------- | ------------------------------- | -------------------------------------------------- |
+| `GET`   | `/api/me/books/:id`             | Chi owner xem chi tiet sach                        |
+| `GET`   | `/api/me/books/:id/statistics`  | Chi owner xem views, purchases, revenue, followers |
+| `PATCH` | `/api/books/:id`                | Tao moderation request cap nhat sach               |
+| `POST`  | `/api/books/:id/delete-request` | Tao moderation request xoa sach                    |
+
+Da hoan thien:
+
+- Account list khong tra password hash; lock revoke session voi enum reason `admin_lock`.
+- Khong cho admin tu khoa/xoa chinh minh; chi super_admin duoc quan ly account admin/super_admin.
+- Soft delete account an danh profile va giu khoa lich su giao dich.
+- Admin book changes/status/delete ghi `audit_logs`; public chapter endpoint chan sach hidden/deleted, nguoi da mua van doc duoc chapter tra phi.
+- Mobile author co UI gui edit/delete request; edit can moderation duyet truoc khi ap dung.
+
 ## 6. Wallet, purchase va transaction
 
 Module: `src/modules/wallet` va `src/modules/book`
@@ -150,7 +205,8 @@ Da hoan thien:
 
 - Purchase goi stored procedure `sp_purchase_chapter`.
 - Lock va cap entitlement trong transaction database.
-- Chia doanh thu platform/seller.
+- Trừ đủ giá chương từ ví người mua; ghi có 95% cho người đăng và 5% vào ví admin chính (cấu hình `platform_admin_account_id`, mặc định ưu tiên super_admin rồi admin đang hoạt động).
+- Ghi đủ ba bút toán `purchase`, `earning` và `platform_fee` trong cùng transaction.
 - Xu ly duplicate purchase, insufficient balance, owner va free chapter.
 - Moi bien dong wallet co ledger.
 - Khong tin gia tien tu client.
@@ -201,12 +257,15 @@ Module: `src/modules/topup`
 | Method | Endpoint                        | Quyen         | Mo ta                     |
 | ------ | ------------------------------- | ------------- | ------------------------- |
 | `POST` | `/api/topups`                   | Authenticated | Tao topup order           |
+| `POST` | `/api/topups/demo`              | Authenticated | Cong tien demo (dev/test) |
 | `GET`  | `/api/topups`                   | Authenticated | Danh sach topup cua user  |
 | `GET`  | `/api/topups/:id`               | Owner         | Chi tiet topup order      |
 | `POST` | `/api/topups/:provider/webhook` | Gateway       | Nhan webhook va cong tien |
 
 Da hoan thien:
 
+- Demo topup chi hoat dong ngoai production, nhan cac menh gia co dinh va cong tien ngay vao wallet.
+- Demo topup ghi transaction `topup` voi `payment_method = system` va wallet ledger trong cung transaction database.
 - Verify HMAC signature.
 - Lock order/wallet trong transaction.
 - Idempotent webhook, callback lap khong cong tien hai lan.
@@ -259,13 +318,14 @@ Da hoan thien:
 
 Module: `src/modules/interaction`
 
-| Method   | Endpoint                  | Quyen         | Mo ta                    |
-| -------- | ------------------------- | ------------- | ------------------------ |
-| `POST`   | `/api/books/:id/ratings`  | Authenticated | Tao/cap nhat rating 1-5  |
-| `POST`   | `/api/books/:id/comments` | Authenticated | Tao comment book/chapter |
-| `GET`    | `/api/books/:id/comments` | Public        | Lay comment visible      |
-| `PATCH`  | `/api/comments/:id`       | Owner/Admin   | Sua comment              |
-| `DELETE` | `/api/comments/:id`       | Owner/Admin   | Soft delete comment      |
+| Method   | Endpoint                  | Quyen         | Mo ta                              |
+| -------- | ------------------------- | ------------- | ---------------------------------- |
+| `POST`   | `/api/books/:id/ratings`  | Authenticated | Tao/cap nhat rating 1-5            |
+| `GET`    | `/api/me/ratings`         | Authenticated | Lay ratings cua tai khoan hien tai |
+| `POST`   | `/api/books/:id/comments` | Authenticated | Tao comment book/chapter           |
+| `GET`    | `/api/books/:id/comments` | Public        | Lay comment visible                |
+| `PATCH`  | `/api/comments/:id`       | Owner/Admin   | Sua comment                        |
+| `DELETE` | `/api/comments/:id`       | Owner/Admin   | Soft delete comment                |
 
 Da hoan thien:
 
@@ -314,20 +374,26 @@ Module: `src/modules/messaging`
 
 ### Notification
 
-| Method  | Endpoint                             | Quyen         | Mo ta                        |
-| ------- | ------------------------------------ | ------------- | ---------------------------- |
-| `GET`   | `/api/me/notifications`              | Authenticated | Lay notification cua user    |
-| `GET`   | `/api/me/notifications/unread-count` | Authenticated | Dem notification chua doc    |
-| `PATCH` | `/api/notifications/:id/read`        | Owner         | Danh dau notification da doc |
+| Method  | Endpoint                             | Quyen         | Mo ta                                        |
+| ------- | ------------------------------------ | ------------- | -------------------------------------------- |
+| `GET`   | `/api/me/notifications`              | Authenticated | Lay notification cua user                    |
+| `GET`   | `/api/me/notifications/unread-count` | Authenticated | Dem notification chua doc                    |
+| `PATCH` | `/api/notifications/:id/read`        | Owner         | Danh dau notification da doc                 |
+| `PUT`   | `/api/me/push-token`                 | Authenticated | Dang ky Expo push token cho session hien tai |
 
 Da hoan thien:
 
 - Conversation luon luu `user_a_id < user_b_id`.
 - Chi member moi doc/gui message.
 - Block duoc kiem tra hai chieu.
-- Notification luu MySQL truoc khi co transport push.
+- Notification luu MySQL truoc khi emit/push.
 - Ho tro read state va deep-link reference.
-- Socket.IO va FCM chua tich hop.
+- Socket.IO xac thuc JWT/session va join room rieng theo account ID.
+- Message event `message:new` va notification event `notification:new` emit sau database commit.
+- Expo push token luu trong `user_sessions.fcm_token`; notification gui qua Expo Push Service va mark `pushed_at` khi ticket thanh cong.
+- Mobile co REST inbox fallback, chat realtime, notification list, ratings/comments/report va Library personal-ratings tab.
+- Remote push can EAS project ID/push credentials va development build; Expo Go Android khong nhan remote push tu SDK 53 tro len.
+- Push receipt retry worker/token cleanup chua duoc trien khai; REST notifications van doc duoc neu push fail.
 
 ## 14. Admin statistics
 

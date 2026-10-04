@@ -2,25 +2,25 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    Alert,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import { useAuth } from "@/components/auth-provider";
 import { FollowingFeed } from "@/components/discover-following";
 import { RecommendationsFeed } from "@/components/discover-recommendations";
 import {
-    DiscoverBook,
-    DiscoverGenre,
-    FollowingUser,
-    getFollowingFeed,
-    getGenres,
-    getRecommendations,
+  DiscoverBook,
+  DiscoverGenre,
+  FollowingUser,
+  getFollowingFeed,
+  getGenres,
+  getRecommendations,
 } from "@/lib/discover-api";
 
 type FeedTab = "Đề xuất" | "Theo dõi";
@@ -35,11 +35,14 @@ export default function DiscoverScreen() {
     [],
   );
   const [following, setFollowing] = React.useState<FollowingUser[]>([]);
+  const [followingBooks, setFollowingBooks] = React.useState<DiscoverBook[]>(
+    [],
+  );
   const [saved, setSaved] = React.useState<DiscoverBook[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const userId = user?.id;
-  const showGenrePicker = selectedGenres.length === 0;
+  const showGenrePicker = true;
 
   const loadGenres = React.useCallback(async () => {
     try {
@@ -55,7 +58,6 @@ export default function DiscoverScreen() {
   }, []);
 
   const loadRecommendations = React.useCallback(async () => {
-    if (selectedGenres.length === 0) return;
     setLoading(true);
     setError(null);
     try {
@@ -83,6 +85,7 @@ export default function DiscoverScreen() {
     try {
       const result = await getFollowingFeed(userId);
       setFollowing(result.following);
+      setFollowingBooks(result.followingBooks);
       setSaved(result.saved);
     } catch (loadError) {
       setError(
@@ -192,7 +195,11 @@ export default function DiscoverScreen() {
             </Pressable>
           </View>
         ) : (
-          <FollowingFeed users={following} saved={saved} />
+          <FollowingFeed
+            users={following}
+            books={followingBooks}
+            saved={saved}
+          />
         )}
       </ScrollView>
     </SafeAreaView>

@@ -30,6 +30,20 @@ const notificationIdSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
+const expoPushTokenSchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .refine(
+      (value) =>
+        value.startsWith("ExpoPushToken[") ||
+        value.startsWith("ExponentPushToken["),
+      { message: "Token Expo Push không hợp lệ" },
+    ),
+});
+
 module.exports = {
   receiverSchema,
   conversationIdSchema,
@@ -38,4 +52,5 @@ module.exports = {
   blockSchema,
   messageIdSchema,
   notificationIdSchema,
+  expoPushTokenSchema,
 };
