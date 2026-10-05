@@ -4,20 +4,6 @@ const repository = require("./book.repository");
 const moderationRepository = require("../moderation/moderation.repository");
 const db = require("../../config/db");
 
-function getSafePaidChapterPreview(chapter) {
-  const preview = String(chapter.preview_text || "").trim();
-  const content = String(chapter.content || "").trim();
-  if (!preview || !content) return null;
-
-  const normalize = (value) => value.replace(/\s+/g, " ");
-  const normalizedPreview = normalize(preview);
-  const normalizedContent = normalize(content);
-  return normalizedPreview.length < normalizedContent.length &&
-    !normalizedPreview.includes(normalizedContent)
-    ? chapter.preview_text
-    : null;
-}
-
 async function listPublic(input) {
   return repository.listPublic(input);
 }
@@ -58,7 +44,12 @@ async function listChapters(bookId) {
   const book = await repository.findPublicById(bookId);
   if (!book)
     throw new ApiError(404, "BOOK_NOT_FOUND", "Không tìm thấy sách công khai");
-  return repository.listChapters(bookId);
+  const chapters = await repository.listChapters(bookId);
+  return chapters.map((chapter) =>
+    Number(chapter.is_free) === 1
+      ? chapter
+      : { ...chapter, preview_text: null },
+  );
 }
 
 async function createBook(ownerId, input) {
@@ -379,7 +370,7 @@ async function getChapter(id, accountId) {
     ...chapter,
     content: null,
     content_url: null,
-    preview_text: getSafePaidChapterPreview(chapter),
+    preview_text: null,
     requiresPurchase: true,
   };
 }

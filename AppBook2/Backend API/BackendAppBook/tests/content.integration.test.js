@@ -137,7 +137,7 @@ describe("Category, book and chapter", () => {
       chapter_number: 2,
       title: "Paid chapter with teaser",
       content: "The complete chapter content is much longer than this teaser.",
-      preview_text: "A safe short teaser.",
+      preview_text: "The complete chapter content",
       is_free: 0,
       price: "10000.00",
       status: "published",
@@ -147,6 +147,12 @@ describe("Category, book and chapter", () => {
     const books = await request(app).get("/api/books");
     expect(books.status).toBe(200);
     expect(books.body.data.rows.some((item) => item.id === bookId)).toBe(true);
+
+    const chapterList = await request(app).get(
+      `/api/books/${bookId}/chapters`,
+    );
+    expect(chapterList.status).toBe(200);
+    expect(chapterList.body.data.chapters[0].preview_text).toBe(null);
 
     const publicChapter = await request(app).get(`/api/chapters/${chapter[0]}`);
     expect(publicChapter.status).toBe(200);
@@ -179,7 +185,7 @@ describe("Category, book and chapter", () => {
     expect(chapterWithSafePreview.status).toBe(200);
     expect(chapterWithSafePreview.body.data.chapter.content).toBe(null);
     expect(chapterWithSafePreview.body.data.chapter.preview_text).toBe(
-      "A safe short teaser.",
+      null,
     );
   });
 });
