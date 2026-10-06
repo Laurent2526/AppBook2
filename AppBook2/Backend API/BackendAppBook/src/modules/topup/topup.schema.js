@@ -20,7 +20,13 @@ const createTopupSchema = z.object({
 });
 
 const demoTopupSchema = z.object({
-  amount: z.enum(["50000", "100000", "200000", "500000", "1000000"]),
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d+$/, "Số tiền nạp phải là số nguyên VND")
+    .refine((value) => Number(value) > 0, {
+      message: "Số tiền nạp phải lớn hơn 0",
+    }),
 });
 
 const webhookTopupSchema = z

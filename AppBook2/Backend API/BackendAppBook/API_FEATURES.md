@@ -102,6 +102,7 @@ Module: `src/modules/category`, `src/modules/book`
 | `PATCH` | `/api/chapters/:id`                | Owner                | Tao yeu cau cap nhat chapter                    |
 | `POST`  | `/api/chapters/:id/delete-request` | Owner                | Tao yeu cau xoa mem chapter                     |
 | `GET`   | `/api/chapters/:id`                | Public/Authenticated | Doc chapter theo entitlement                    |
+| `POST`  | `/api/chapters/:id/view`            | Public/Authenticated | Ghi luot doc hop le, cap nhat counter book/chapter |
 
 Da hoan thien:
 

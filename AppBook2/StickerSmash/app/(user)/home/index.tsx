@@ -1,5 +1,5 @@
 import React from "react";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   Pressable,
   ScrollView,
@@ -12,8 +12,19 @@ import { useAuth } from "@/components/auth-provider";
 import { BookCover } from "@/components/book-cover";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { getCategories, listBooks } from "@/lib/discover-api";
+import { getReadingHistory, type ReadingHistory } from "@/lib/account-api";
+import {
+  getBookById,
+  getCategories,
+  listBooks,
+  type DiscoverBook,
+} from "@/lib/discover-api";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+type ContinueReading = {
+  book: DiscoverBook;
+  history: ReadingHistory;
+};
 
 const formatCompactNumber = (value: number) =>
   new Intl.NumberFormat("vi-VN", {
@@ -45,72 +56,102 @@ export default function HomeScreen() {
   >([{ id: "all", name: "Tất cả" }]);
   const [newBooks, setNewBooks] = React.useState<any[]>([]);
   const [hotBooks, setHotBooks] = React.useState<any[]>([]);
+  const [continueReading, setContinueReading] =
+    React.useState<ContinueReading | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
 
-  React.useEffect(() => {
-    let active = true;
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
 
-    const load = async () => {
-      try {
-        const [
-          { categories: categoryList },
-          { rows: latestRows },
-          { rows: hotRows },
-        ] = await Promise.all([
-          getCategories(),
-          listBooks({ limit: 10, sortBy: "latest" }),
-          listBooks({ limit: 10, sortBy: "hot" }),
-        ]);
+      const loadContinueReading = async () => {
+        if (!isAuthenticated) {
+          if (active) setContinueReading(null);
+          return;
+        }
 
-        if (!active) return;
+        try {
+          const { items } = await getReadingHistory();
+          const latest = items[0];
+          if (!latest) {
+            if (active) setContinueReading(null);
+            return;
+          }
 
-        const mappedCategories = [
-          { id: "all", name: "Tất cả" },
-          ...categoryList,
-        ];
-        setCategories(mappedCategories);
-        const categoryName = (book: any) =>
-          book.categoryIds
-            ?.map(
-              (id: string) =>
-                categoryList.find((category) => category.id === id)?.name,
-            )
-            .filter(Boolean)
-            .join(" · ") || "Truyện";
+          const { book } = await getBookById(latest.book_id);
+          if (active) setContinueReading({ book, history: latest });
+        } catch (error) {
+          console.warn("continue reading fetch failed", error);
+          if (active) setContinueReading(null);
+        }
+      };
 
-        setNewBooks(
-          latestRows.map((book: any, index: number) => ({
-            ...book,
-            category: categoryName(book),
-            coverColor: getCoverColor(index),
-          })),
-        );
-        setHotBooks(
-          hotRows.map((book: any, index: number) => ({
-            ...book,
-            category: categoryName(book),
-            coverColor: getCoverColor(index + 2),
-          })),
-        );
-      } catch (error) {
-        console.warn("home fetch failed", error);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
+      const load = async () => {
+        try {
+          const [
+            { categories: categoryList },
+            { rows: latestRows },
+            { rows: hotRows },
+          ] = await Promise.all([
+            getCategories(),
+            listBooks({ limit: 10, sortBy: "latest" }),
+            listBooks({ limit: 10, sortBy: "hot" }),
+          ]);
 
-    load();
-    return () => {
-      active = false;
-    };
-  }, []);
+          if (!active) return;
+
+          const mappedCategories = [
+            { id: "all", name: "Tất cả" },
+            ...categoryList,
+          ];
+          setCategories(mappedCategories);
+          const categoryName = (book: any) =>
+            book.categoryIds
+              ?.map(
+                (id: string) =>
+                  categoryList.find((category) => category.id === id)?.name,
+              )
+              .filter(Boolean)
+              .join(" · ") || "Truyện";
+
+          setNewBooks(
+            latestRows.map((book: any, index: number) => ({
+              ...book,
+              category: categoryName(book),
+              coverColor: getCoverColor(index),
+            })),
+          );
+          setHotBooks(
+            hotRows.map((book: any, index: number) => ({
+              ...book,
+              category: categoryName(book),
+              coverColor: getCoverColor(index + 2),
+            })),
+          );
+        } catch (error) {
+          console.warn("home fetch failed", error);
+        } finally {
+          if (active) setLoading(false);
+        }
+      };
+
+      load();
+      void loadContinueReading();
+      return () => {
+        active = false;
+      };
+    }, [isAuthenticated]),
+  );
 
   const greeting = isAuthenticated
     ? `Chào buổi sáng, ${user?.name ?? "bạn"}! 👋`
     : "Chào mừng bạn! 👋";
 
-  const continueReading = newBooks[0] || null;
+  const continueReadingProgress = Math.min(
+    100,
+    Math.max(0, Number(continueReading?.history.progress_percent || 0)),
+  );
 
   const openBook = (id: string, title?: string) => {
     router.push({
@@ -185,26 +226,34 @@ export default function HomeScreen() {
             <Pressable
               style={styles.continueCard}
               onPress={() =>
-                openBook(continueReading.id, continueReading.title)
+                openBook(continueReading.book.id, continueReading.book.title)
               }
             >
               <BookCover
-                uri={continueReading.coverUrl}
-                title={continueReading.title}
-                fallbackColor={continueReading.coverColor}
+                uri={continueReading.book.coverUrl}
+                title={continueReading.book.title}
+                fallbackColor="#F59E0B"
                 style={styles.bookCover}
               />
 
               <View style={styles.bookInfo}>
                 <ThemedText type="defaultSemiBold" style={styles.bookTitle}>
-                  {continueReading.title}
+                  {continueReading.book.title}
                 </ThemedText>
                 <ThemedText style={styles.authorText}>
-                  {continueReading.author || "Tác giả"}
+                  {continueReading.book.author || "Tác giả"}
                 </ThemedText>
-                <ThemedText style={styles.progressText}>Đã đọc 65%</ThemedText>
+                <ThemedText style={styles.progressText}>
+                  Đã đọc {Math.floor(continueReadingProgress)}% · Chương{" "}
+                  {continueReading.history.chapters_read || 1}
+                </ThemedText>
                 <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: "65%" }]} />
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${continueReadingProgress}%` },
+                    ]}
+                  />
                 </View>
               </View>
 
@@ -213,7 +262,17 @@ export default function HomeScreen() {
                 onPress={() =>
                   router.push({
                     pathname: "/reader",
-                    params: { bookId: continueReading.id, chapter: "1" },
+                    params: {
+                      bookId: continueReading.history.book_id,
+                      chapterId:
+                        continueReading.history.last_chapter_id || undefined,
+                      chapter: String(
+                        continueReading.history.chapters_read || 1,
+                      ),
+                      scrollPosition: String(
+                        continueReading.history.scroll_position || 0,
+                      ),
+                    },
                   })
                 }
               >

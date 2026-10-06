@@ -179,6 +179,19 @@ async function findActivePurchase(accountId, chapterId) {
     .first();
 }
 
+async function recordChapterView(chapterId, bookId, accountId) {
+  return db.transaction(async (trx) => {
+    await trx("chapter_views").insert({
+      chapter_id: chapterId,
+      book_id: bookId,
+      account_id: accountId || null,
+      viewed_at: trx.fn.now(),
+    });
+    await trx("chapters").where({ id: chapterId }).increment("view_count", 1);
+    await trx("books").where({ id: bookId }).increment("view_count", 1);
+  });
+}
+
 async function createChapter(trx, data) {
   const [id] = await trx("chapters").insert(data);
   return trx("chapters").where({ id }).first();
@@ -211,6 +224,7 @@ module.exports = {
   listChapters,
   findChapter,
   findActivePurchase,
+  recordChapterView,
   createChapter,
   updateBookCategories,
   findPendingModeration,

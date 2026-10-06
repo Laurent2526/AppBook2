@@ -122,6 +122,11 @@ const swaggerOptions = {
         ...protectedOperation("Request chapter update", "patch", "Content"),
         ...protectedOperation("Request chapter deletion", "post", "Content"),
       },
+      "/api/chapters/{id}/view": publicOperation(
+        "Record a chapter view",
+        "post",
+        "Content",
+      ),
       "/api/chapters/{id}/purchase": protectedOperation(
         "Purchase a paid chapter",
         "post",

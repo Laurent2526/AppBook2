@@ -4,6 +4,7 @@ const authenticate = require("../../middlewares/authenticate");
 const controller = require("./book.controller");
 
 router.get("/:id", optionalAuthenticate, controller.getChapter);
+router.post("/:id/view", optionalAuthenticate, controller.recordChapterView);
 router.patch("/:id", authenticate, controller.updateChapter);
 router.post("/:id/delete-request", authenticate, (req, res, next) => {
   req.params.type = "chapter";

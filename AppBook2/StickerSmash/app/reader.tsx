@@ -23,6 +23,7 @@ import {
   getBookById,
   getBookChapters,
   getChapterById,
+  recordChapterView,
 } from "@/lib/discover-api";
 
 export default function ReaderScreen() {
@@ -38,12 +39,15 @@ export default function ReaderScreen() {
   const [chapterData, setChapterData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
   const [purchasing, setPurchasing] = React.useState(false);
+  const [viewRecordingError, setViewRecordingError] = React.useState(false);
+  const [viewRetryCount, setViewRetryCount] = React.useState(0);
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollPositionRef = React.useRef(0);
   const contentHeightRef = React.useRef(0);
   const viewportHeightRef = React.useRef(0);
   const restorePositionRef = React.useRef<number | null>(null);
   const restoredChapterRef = React.useRef<string | null>(null);
+  const recordedChapterViewRef = React.useRef<string | null>(null);
   const saveProgressTimerRef = React.useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -77,9 +81,15 @@ export default function ReaderScreen() {
           ) || chapters[0];
         if (!active) return;
         if (selected) {
-          setChapterData(selected);
-          const { book: fetchedBook } = await getBookById(String(bookId));
-          if (active) setBook(fetchedBook);
+          const [{ chapter: fetchedChapter }, { book: fetchedBook }] =
+            await Promise.all([
+              getChapterById(String(selected.id)),
+              getBookById(String(bookId)),
+            ]);
+          if (active) {
+            setChapterData(fetchedChapter);
+            setBook(fetchedBook);
+          }
         }
       } catch (error) {
         console.warn("reader fetch failed", error);
@@ -122,10 +132,43 @@ export default function ReaderScreen() {
     : "Nội dung chương đang được tải từ máy chủ.";
   const currentChapterId = activeChapterData?.id;
   const currentChapterNumber = activeChapterData?.chapter_number;
+  const currentChapterViewKey =
+    currentChapterId && (activeChapterData?.book_id || bookId)
+      ? `${activeChapterData?.book_id || bookId}:${currentChapterId}`
+      : null;
   const currentChapterKey =
     bookId && currentChapterId
       ? `${bookId}:${currentChapterId}:${scrollPosition ?? "0"}`
       : null;
+
+  React.useEffect(() => {
+    if (
+      loading ||
+      requiresPurchase ||
+      !currentChapterViewKey ||
+      (!activeChapterData?.content && !activeChapterData?.content_url) ||
+      recordedChapterViewRef.current === currentChapterViewKey
+    ) {
+      return;
+    }
+
+    recordedChapterViewRef.current = currentChapterViewKey;
+    void recordChapterView(String(currentChapterId))
+      .then(() => setViewRecordingError(false))
+      .catch((error) => {
+        recordedChapterViewRef.current = null;
+        setViewRecordingError(true);
+        console.warn("chapter view recording failed", error);
+      });
+  }, [
+    activeChapterData?.content,
+    activeChapterData?.content_url,
+    currentChapterId,
+    currentChapterViewKey,
+    loading,
+    requiresPurchase,
+    viewRetryCount,
+  ]);
 
   const persistReadingProgress = React.useCallback(
     async (position: number) => {
@@ -364,6 +407,15 @@ export default function ReaderScreen() {
         <Text style={styles.body}>
           {loading ? "Đang tải nội dung..." : contentBody}
         </Text>
+        {viewRecordingError ? (
+          <Pressable
+            onPress={() => setViewRetryCount((count) => count + 1)}
+          >
+            <Text style={styles.viewError}>
+              Không ghi nhận được lượt đọc. Nhấn để thử lại.
+            </Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           style={styles.secondaryButton}
@@ -422,6 +474,12 @@ const styles = StyleSheet.create({
     color: "#374151",
     fontSize: 18,
     lineHeight: 32,
+  },
+  viewError: {
+    marginTop: 10,
+    color: "#B91C1C",
+    fontSize: 14,
+    textDecorationLine: "underline",
   },
   lockCard: {
     marginTop: 42,

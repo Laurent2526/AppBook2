@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -42,7 +43,9 @@ export default function WalletScreen() {
   const [loadError, setLoadError] = React.useState("");
   const [entriesError, setEntriesError] = React.useState("");
   const [selectedAmount, setSelectedAmount] = React.useState("100000");
+  const [customAmount, setCustomAmount] = React.useState("");
   const [topupLoading, setTopupLoading] = React.useState(false);
+  const amountToTopup = customAmount || selectedAmount;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -85,9 +88,13 @@ export default function WalletScreen() {
 
   const handleDemoTopup = async () => {
     if (topupLoading) return;
+    if (!/^\d+$/.test(amountToTopup) || Number(amountToTopup) <= 0) {
+      Alert.alert("Số tiền không hợp lệ", "Nhập số tiền nguyên lớn hơn 0.");
+      return;
+    }
     setTopupLoading(true);
     try {
-      const result = await createDemoTopup(selectedAmount);
+      const result = await createDemoTopup(amountToTopup);
       setWallet((current) =>
         current ? { ...current, balance: result.balance } : current,
       );
@@ -138,17 +145,35 @@ export default function WalletScreen() {
             </View>
           </View>
         ) : null}
-        <Text style={styles.sectionTitle}>Chọn số tiền nạp</Text>
+        <Text style={styles.sectionTitle}>Nhập số tiền muốn nạp</Text>
+        <TextInput
+          accessibilityLabel="Số tiền muốn nạp"
+          style={styles.amountInput}
+          value={customAmount}
+          onChangeText={(value) => {
+            setCustomAmount(value.replace(/\D/g, ""));
+          }}
+          placeholder="Nhập số tiền (VND)"
+          keyboardType="number-pad"
+          returnKeyType="done"
+        />
+        <Text style={styles.customAmountHint}>
+          Nhập số tiền nguyên bằng VND, không giới hạn mức nạp.
+        </Text>
+        <Text style={styles.sectionTitle}>Hoặc chọn nhanh</Text>
         <View style={styles.amountGrid}>
           {topupAmounts.map((amount) => {
-            const selected = amount === selectedAmount;
+            const selected = !customAmount && amount === selectedAmount;
             return (
               <Pressable
                 key={amount}
                 accessibilityRole="radio"
                 accessibilityState={{ selected }}
                 style={[styles.amountOption, selected && styles.amountSelected]}
-                onPress={() => setSelectedAmount(amount)}
+                onPress={() => {
+                  setSelectedAmount(amount);
+                  setCustomAmount("");
+                }}
               >
                 <Text
                   style={[
@@ -172,7 +197,7 @@ export default function WalletScreen() {
           disabled={topupLoading}
         >
           <Text style={styles.primaryText}>
-            {topupLoading ? "Đang nạp..." : `Nạp ${formatVnd(selectedAmount)}`}
+            {topupLoading ? "Đang nạp..." : `Nạp ${formatVnd(amountToTopup)}`}
           </Text>
         </Pressable>
         <Text style={styles.sectionTitle}>Lịch sử giao dịch</Text>
@@ -247,6 +272,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   amountSelected: { borderColor: "#0F766E", backgroundColor: "#E8F5F2" },
+  amountInput: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    backgroundColor: "#FFFFFF",
+    color: "#111827",
+    fontSize: 18,
+  },
+  customAmountHint: { color: "#6B7280", fontSize: 12, lineHeight: 18 },
   amountText: { color: "#374151", fontSize: 14, fontWeight: "600" },
   amountTextSelected: { color: "#0F766E" },
   demoNote: { color: "#6B7280", fontSize: 12, lineHeight: 18 },

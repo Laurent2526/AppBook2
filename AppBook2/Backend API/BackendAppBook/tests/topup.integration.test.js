@@ -206,7 +206,7 @@ describe("Topup webhook flow", () => {
     const invalidAmount = await request(app)
       .post("/api/topups/demo")
       .set("Authorization", `Bearer ${user.token}`)
-      .send({ amount: "12345" });
+      .send({ amount: "0" });
     expect(invalidAmount.status).toBe(400);
     expect(
       String(
@@ -214,6 +214,19 @@ describe("Topup webhook flow", () => {
           .balance,
       ),
     ).toBe("100000.00");
+
+    const customAmount = await request(app)
+      .post("/api/topups/demo")
+      .set("Authorization", `Bearer ${user.token}`)
+      .send({ amount: "12345" });
+    expect(customAmount.status).toBe(201);
+    expect(customAmount.body.data.amount).toBe("12345.00");
+
+    const invalidDecimalAmount = await request(app)
+      .post("/api/topups/demo")
+      .set("Authorization", `Bearer ${user.token}`)
+      .send({ amount: "12345.50" });
+    expect(invalidDecimalAmount.status).toBe(400);
 
     const originalNodeEnv = env.NODE_ENV;
     env.NODE_ENV = "production";
@@ -240,7 +253,7 @@ describe("Topup webhook flow", () => {
     const authorWallet = await db("wallets")
       .where({ account_id: author.accountId })
       .first();
-    expect(String(buyerWallet.balance)).toBe("90000.00");
+    expect(String(buyerWallet.balance)).toBe("102345.00");
     expect(String(authorWallet.balance)).toBe("9500.00");
 
     const unlockedChapter = await request(app)

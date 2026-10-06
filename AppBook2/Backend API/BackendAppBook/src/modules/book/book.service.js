@@ -375,6 +375,25 @@ async function getChapter(id, accountId) {
   };
 }
 
+async function recordChapterView(id, accountId) {
+  const chapter = await getChapter(id, accountId);
+  if (chapter.requiresPurchase) {
+    throw new ApiError(
+      403,
+      "CHAPTER_PURCHASE_REQUIRED",
+      "Cần mua chương trước khi ghi nhận lượt đọc",
+    );
+  }
+
+  const book = await repository.findBookById(db, chapter.book_id);
+  if (accountId && String(book.owner_id) === String(accountId)) {
+    return { counted: false };
+  }
+
+  await repository.recordChapterView(chapter.id, chapter.book_id, accountId);
+  return { counted: true };
+}
+
 module.exports = {
   listPublic,
   listMine,
@@ -388,4 +407,5 @@ module.exports = {
   updateChapter,
   requestDelete,
   getChapter,
+  recordChapterView,
 };

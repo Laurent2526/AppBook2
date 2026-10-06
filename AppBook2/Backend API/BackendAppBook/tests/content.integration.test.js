@@ -40,6 +40,8 @@ describe("Category, book and chapter", () => {
   const bookIds = [];
 
   afterAll(async () => {
+    if (bookIds.length)
+      await db("chapter_views").whereIn("book_id", bookIds).del();
     if (bookIds.length) await db("books").whereIn("id", bookIds).del();
     if (accountIds.length) await db("accounts").whereIn("id", accountIds).del();
     await db.destroy();
@@ -187,5 +189,78 @@ describe("Category, book and chapter", () => {
     expect(chapterWithSafePreview.body.data.chapter.preview_text).toBe(
       null,
     );
+  });
+
+  it("records valid chapter reads for guests and accounts but not locked chapters", async () => {
+    const owner = await createVerifiedUser("view_owner");
+    const reader = await createVerifiedUser("view_reader");
+    accountIds.push(owner.accountId, reader.accountId);
+
+    const [bookId] = await db("books").insert({
+      owner_id: owner.accountId,
+      title: `View Count Book ${Date.now()}`,
+      slug: `view-count-book-${Date.now()}`,
+      status: "published",
+      writing_status: "ongoing",
+      language: "vi",
+      published_at: db.fn.now(),
+    });
+    bookIds.push(bookId);
+
+    const [freeChapterId] = await db("chapters").insert({
+      book_id: bookId,
+      chapter_number: 1,
+      title: "Free chapter",
+      content: "Readable content",
+      is_free: 1,
+      price: "0.00",
+      status: "published",
+      published_at: db.fn.now(),
+    });
+    const [paidChapterId] = await db("chapters").insert({
+      book_id: bookId,
+      chapter_number: 2,
+      title: "Paid chapter",
+      content: "Locked content",
+      is_free: 0,
+      price: "100.00",
+      status: "published",
+      published_at: db.fn.now(),
+    });
+
+    const guestRead = await request(app).post(
+      `/api/chapters/${freeChapterId}/view`,
+    );
+    expect(guestRead.status).toBe(200);
+    expect(guestRead.body.data.counted).toBe(true);
+
+    const accountRead = await request(app)
+      .post(`/api/chapters/${freeChapterId}/view`)
+      .set("Authorization", "Bearer " + reader.token);
+    expect(accountRead.status).toBe(200);
+    expect(accountRead.body.data.counted).toBe(true);
+
+    const lockedRead = await request(app).post(
+      `/api/chapters/${paidChapterId}/view`,
+    );
+    expect(lockedRead.status).toBe(403);
+
+    const viewRows = await db("chapter_views")
+      .where({ book_id: bookId })
+      .orderBy("id", "asc");
+    expect(viewRows).toHaveLength(2);
+    expect(viewRows[0].account_id).toBeNull();
+    expect(viewRows[1].account_id).toBe(reader.accountId);
+
+    const book = await db("books").where({ id: bookId }).first();
+    const chapter = await db("chapters").where({ id: freeChapterId }).first();
+    expect(Number(book.view_count)).toBe(2);
+    expect(Number(chapter.view_count)).toBe(2);
+
+    const ownerRead = await request(app)
+      .post(`/api/chapters/${freeChapterId}/view`)
+      .set("Authorization", "Bearer " + owner.token);
+    expect(ownerRead.status).toBe(200);
+    expect(ownerRead.body.data.counted).toBe(false);
   });
 });

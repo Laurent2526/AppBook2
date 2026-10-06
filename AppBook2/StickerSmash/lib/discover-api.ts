@@ -190,6 +190,12 @@ export function getChapterById(chapterId: string) {
   );
 }
 
+export function recordChapterView(chapterId: string) {
+  return request<{ counted: boolean }>(`/chapters/${chapterId}/view`, {
+    method: "POST",
+  });
+}
+
 export function getGenres() {
   return request<{ categories: DiscoverGenre[] }>("/categories").then(
     (data) => ({
